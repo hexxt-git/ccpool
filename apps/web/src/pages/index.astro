@@ -1,0 +1,74 @@
+---
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ccshare</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        background: #fff;
+        color: #000;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="mx-auto flex max-w-2xl flex-1 flex-col justify-center px-8 py-24">
+      <div class="border border-black p-8">
+        <div class="mb-6 text-xs uppercase tracking-widest text-neutral-500">▸ ccshare v0.1</div>
+
+        <h1 class="mb-4 text-3xl font-semibold leading-snug tracking-tight">
+          Fair Claude<br />subscription sharing.
+        </h1>
+
+        <div class="my-6 border-t border-black"></div>
+
+        <p class="mb-4 text-sm leading-relaxed text-neutral-700">
+          ccshare is a CLI tool for teams sharing a single Claude subscription. It tracks usage
+          across both 5-hour rolling windows and weekly limits, so everyone gets a fair slice —
+          automatically.
+        </p>
+
+        <p class="mb-8 text-sm leading-relaxed text-neutral-700">
+          No more one person burning through the quota. No spreadsheets. Just a command that tells
+          you when it's your turn.
+        </p>
+
+        <div class="flex flex-wrap gap-4">
+          <a
+            href="/docs/introduction"
+            class="border border-black px-4 py-2 text-xs uppercase tracking-widest transition-colors hover:bg-black hover:text-white"
+          >
+            Read the docs →
+          </a>
+          <a
+            href="https://github.com/HEXXT/ccshare"
+            class="px-4 py-2 text-xs uppercase tracking-widest text-neutral-500 transition-colors hover:text-black"
+          >
+            GitHub ↗
+          </a>
+        </div>
+      </div>
+
+      <footer class="mt-8 text-center text-xs text-neutral-400">
+        ccshare — open source, MIT licensed
+      </footer>
+    </main>
+  </body>
+</html>

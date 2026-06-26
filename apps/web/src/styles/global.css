@@ -1,0 +1,24 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sl-font: "IBM Plex Mono", ui-monospace, monospace;
+  --sl-color-accent: #000;
+  --sl-color-accent-high: #000;
+  --sl-color-white: #000;
+  --sl-color-gray-1: #111;
+  --sl-color-gray-2: #333;
+  --sl-color-gray-3: #555;
+  --sl-color-gray-4: #888;
+  --sl-color-gray-5: #bbb;
+  --sl-color-gray-6: #eee;
+  --sl-color-black: #fff;
+  --sl-color-bg: #fff;
+  --sl-color-bg-nav: #fff;
+  --sl-color-bg-sidebar: #fafafa;
+  --sl-color-hairline: #e5e5e5;
+  --sl-color-text: #111;
+  --sl-color-text-accent: #000;
+}
