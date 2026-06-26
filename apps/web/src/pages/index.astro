@@ -10,18 +10,18 @@ import ClawdUser from "../components/ClawdUser.astro";
     class="mx-auto flex w-full max-w-[1200px] flex-1 flex-col justify-center gap-12 p-10 max-[640px]:px-4 max-[640px]:py-8"
   >
     <!-- TOP ROW: HERO INTRODUCTION & VISUALIZATION -->
-    <div
+    <section
       class="grid w-full grid-cols-[1.1fr_1fr] items-center gap-10 max-[950px]:grid-cols-1 max-[950px]:gap-[30px]"
     >
       <!-- HERO TEXT & BUTTONS -->
       <div class="flex flex-col gap-7">
         <div>
           <h1
-            class="font-press text-retro-h1 text-retro-fg mb-[14px] leading-[1.2] tracking-[-1px]"
+            class="font-press text-retro-h1 text-retro-fg mb-[14px] leading-[1.4] tracking-[-1px]"
           >
             CLAUDE SUBSCRIPTION <br /><span class="text-retro-orange">FAIR SHARING</span>
           </h1>
-          <p class="font-vt text-retro-body mt-3 leading-[1.4] text-[#ccc]">
+          <p class="font-vt text-retro-body mt-3 leading-[1.1] text-[#ccc]">
             ccshare is a CLI tool for claude code subscription sharing with fair usage limits for
             teams.
           </p>
@@ -29,8 +29,8 @@ import ClawdUser from "../components/ClawdUser.astro";
 
         <!-- PLAY BUTTONS -->
         <div class="mt-2 flex flex-wrap gap-4">
-          <Button variant="primary" href="#">START SESSION</Button>
-          <Button variant="outline" href="#">WATCH TUTORIAL</Button>
+          <Button variant="primary" href="/docs">GET STARTED</Button>
+          <Button variant="outline" href="https://github.com/hexxt-git/ccshare">VIEW GITHUB</Button>
         </div>
       </div>
 
@@ -44,17 +44,17 @@ import ClawdUser from "../components/ClawdUser.astro";
           <!-- MONITOR -->
           <div class="absolute left-[180px] top-10 w-[280px]">
             <img
-              src="/desktop.png"
+              src="/desktop.webp"
               alt="monitor"
               class="block w-full opacity-90 [image-rendering:pixelated]"
             />
             <div
-              class="absolute left-[58px] top-[63px] flex h-[40%] w-[40%] items-center justify-center overflow-hidden"
+              class="absolute left-[58px] top-[63px] flex h-[38%] w-[38%] items-center justify-center overflow-hidden"
             >
               <img
-                src="/claude.png"
+                src="/claude.webp"
                 alt="Claude"
-                class="animate-spin-slow h-auto w-full opacity-70 [image-rendering:pixelated]"
+                class="animate-spin-slow h-auto w-full opacity-90 [image-rendering:pixelated]"
               />
             </div>
           </div>
@@ -111,45 +111,59 @@ import ClawdUser from "../components/ClawdUser.astro";
           />
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- BOTTOM ROW: 3 FEATURE CARDS -->
-    <div class="mt-5 grid w-full grid-cols-3 gap-5 max-[950px]:grid-cols-1 max-[950px]:gap-4">
-      <div class="border-retro-border bg-retro-card flex flex-col gap-2 border-2 px-5 py-4">
-        <h3
-          class="font-press text-retro-card-title text-retro-feat-1 leading-[1.4] tracking-[0.5px]"
-        >
-          1. 5-HOUR USAGE SMOOTHING
-        </h3>
-        <p class="text-retro-card-body leading-[1.35] text-[#999]">
-          Monitors active prompt volumes in rolling 5-hour slots. If a user exceeds their fair
-          share, ccshare automatically queues requests to guarantee equal access.
-        </p>
-      </div>
+    <section aria-label="Key Features">
+      <ul class="grid w-full grid-cols-3 gap-5 max-[950px]:grid-cols-1 max-[950px]:gap-4">
+        <li>
+          <article
+            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+          >
+            <h2
+              class="font-press text-retro-card-title text-retro-orange leading-[1.4] tracking-[0.5px]"
+            >
+              1. 5-HOUR USAGE SMOOTHING
+            </h2>
+            <p class="text-retro-card-body leading-[1.05] text-[#999]">
+              Monitors active prompt volumes in rolling 5-hour slots. If a user exceeds their fair
+              share, ccshare automatically queues requests to guarantee equal access.
+            </p>
+          </article>
+        </li>
 
-      <div class="border-retro-border bg-retro-card flex flex-col gap-2 border-2 px-5 py-4">
-        <h3
-          class="font-press text-retro-card-title text-retro-feat-2 leading-[1.4] tracking-[0.5px]"
-        >
-          2. WEEKLY QUOTA CAPPING
-        </h3>
-        <p class="text-retro-card-body leading-[1.35] text-[#999]">
-          Tracks total tokens spent throughout the week, helping teams stay within boundaries and
-          avoid subscription suspensions or service lockouts.
-        </p>
-      </div>
+        <li>
+          <article
+            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+          >
+            <h2
+              class="font-press text-retro-card-title text-retro-yellow leading-[1.4] tracking-[0.5px]"
+            >
+              2. WEEKLY QUOTA CAPPING
+            </h2>
+            <p class="text-retro-card-body leading-[1.05] text-[#999]">
+              Tracks total tokens spent throughout the week, helping teams stay within boundaries
+              and avoid subscription suspensions or service lockouts.
+            </p>
+          </article>
+        </li>
 
-      <div class="border-retro-border bg-retro-card flex flex-col gap-2 border-2 px-5 py-4">
-        <h3
-          class="font-press text-retro-card-title text-retro-feat-3 leading-[1.4] tracking-[0.5px]"
-        >
-          3. TIERED CAPACITY PROXYING
-        </h3>
-        <p class="text-retro-card-body leading-[1.35] text-[#999]">
-          Optimizes throughput allocations depending on whether you share a Pro ($20/mo), Team
-          ($100/mo), or custom Enterprise ($200/mo) tier subscription.
-        </p>
-      </div>
-    </div>
+        <li>
+          <article
+            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+          >
+            <h2
+              class="font-press text-retro-card-title text-retro-green leading-[1.4] tracking-[0.5px]"
+            >
+              3. TIERED CAPACITY PROXYING
+            </h2>
+            <p class="text-retro-card-body leading-[1.05] text-[#999]">
+              Optimizes throughput allocations depending on whether you share a Pro ($20/mo), Team
+              ($100/mo), or custom Enterprise ($200/mo) tier subscription.
+            </p>
+          </article>
+        </li>
+      </ul>
+    </section>
   </main>
 </Layout>

@@ -1,12 +1,11 @@
 ---
 interface Props {
-  color: string; // The hex color or CSS variable name
+  color: string;
   class?: string;
 }
 
 const { color, class: className = "" } = Astro.props;
 
-// We represent the 16x16 pixel layout of clawd.png using optimized SVG path data
 const bodyPath =
   "M4,5h8v1h-8z M4,6h1v1h-1z M6,6h4v1h-4z M11,6h1v1h-1z M2,7h12v2h-12z M4,9h8v2h-8z M4,11h1v2h-1z M6,11h1v2h-1z M9,11h1v2h-1z M11,11h1v2h-1z";
 const eyesPath = "M5,6h1v1h-1z M10,6h1v1h-1z";
@@ -18,9 +17,6 @@ const eyesPath = "M5,6h1v1h-1z M10,6h1v1h-1z";
   class:list={["h-auto w-full select-none", className]}
   style={`--avatar-color: ${color};`}
 >
-  {/* Main body of the avatar using the exact token color */}
   <path d={bodyPath} fill="var(--avatar-color)"></path>
-
-  {/* Eyes/details are solid black */}
   <path d={eyesPath} fill="#000"></path>
 </svg>

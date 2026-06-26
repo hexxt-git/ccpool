@@ -9,43 +9,6 @@
   --font-vt: "VT323", monospace;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* Colors */
-  --color-retro-bg: #0c0c0c;
-  --color-retro-fg: #f0e8c8;
-  --color-retro-orange: #e8632a;
-  --color-retro-orange-shadow: #a03010;
-  --color-retro-outline: #444;
-  --color-retro-outline-shadow: #222;
-  --color-retro-card: #111;
-  --color-retro-border: #2a2a2a;
-
-  --color-retro-stripe-1: #2b5ba3;
-  --color-retro-stripe-2: #2c8720;
-  --color-retro-stripe-3: #c28b13;
-  --color-retro-stripe-4: #cc4214;
-
-  --color-retro-feat-1: #ff763c;
-  --color-retro-feat-2: #f4b333;
-  --color-retro-feat-3: #69c24a;
-
-  --color-retro-user-1: #5aa7b6; /* 10% More Saturated Slate Cyan */
-  --color-retro-user-2: #60a551; /* 10% More Saturated Phosphor Green */
-  --color-retro-user-3: #d05a81; /* 10% More Saturated Rose/Berry */
-  --color-retro-user-4: #e4764f; /* 10% More Saturated Coral/Orange */
-  --color-retro-user-5: #eab239; /* 10% More Saturated Amber Yellow */
-  --color-retro-user-6: #a454b8; /* 10% More Saturated Soft Purple */
-
-  /* Font Sizes */
-  --text-retro-btn: 8px;
-  --text-retro-logo: 10px;
-  --text-retro-card-title: 12px;
-  --text-retro-label: 18px;
-  --text-retro-footer: 18px;
-  --text-retro-card-body: 20px;
-  --text-retro-nav: 22px;
-  --text-retro-body: 22px;
-  --text-retro-h1: 24px;
-
   /* Keyframes */
   @keyframes blink {
     0%,
@@ -107,9 +70,81 @@
   --animate-float-a-mid: floatA 3.7s ease-in-out infinite;
   --animate-float-b-mid: floatB 3.3s ease-in-out infinite;
   --animate-spin-slow: spin 12s linear infinite;
+
+  /* Colors derived in theme */
+  --color-retro-bg: var(--color-retro-bg);
+  --color-retro-fg: var(--color-retro-fg);
+  --color-retro-orange: var(--color-retro-orange);
+  --color-retro-orange-shadow: var(--color-retro-orange-shadow);
+  --color-retro-outline: var(--color-retro-outline);
+  --color-retro-outline-shadow: var(--color-retro-outline-shadow);
+  --color-retro-card: var(--color-retro-card);
+  --color-retro-border: var(--color-retro-border);
+
+  --color-retro-stripe-1: var(--color-retro-stripe-1);
+  --color-retro-stripe-2: var(--color-retro-stripe-2);
+  --color-retro-stripe-3: var(--color-retro-stripe-3);
+  --color-retro-stripe-4: var(--color-retro-stripe-4);
+
+  --color-retro-yellow: var(--color-retro-yellow);
+  --color-retro-green: var(--color-retro-green);
+
+  --color-retro-user-1: var(--color-retro-user-1);
+  --color-retro-user-2: var(--color-retro-user-2);
+  --color-retro-user-3: var(--color-retro-user-3);
+  --color-retro-user-4: var(--color-retro-user-4);
+  --color-retro-user-5: var(--color-retro-user-5);
+  --color-retro-user-6: var(--color-retro-user-6);
+
+  /* Font Sizes derived in theme */
+  --text-retro-btn: var(--text-retro-btn);
+  --text-retro-logo: var(--text-retro-logo);
+  --text-retro-card-title: var(--text-retro-card-title);
+  --text-retro-label: var(--text-retro-label);
+  --text-retro-footer: var(--text-retro-footer);
+  --text-retro-card-body: var(--text-retro-card-body);
+  --text-retro-nav: var(--text-retro-nav);
+  --text-retro-body: var(--text-retro-body);
+  --text-retro-h1: var(--text-retro-h1);
 }
 
 :root {
+  /* Colors */
+  --color-retro-bg: #0c0c0c;
+  --color-retro-fg: #f0e8c8;
+  --color-retro-orange: #e8632a;
+  --color-retro-orange-shadow: #a03010;
+  --color-retro-outline: #444;
+  --color-retro-outline-shadow: #222;
+  --color-retro-card: #111;
+  --color-retro-border: #2a2a2a;
+
+  --color-retro-stripe-1: #2b5ba3;
+  --color-retro-stripe-2: #2c8720;
+  --color-retro-stripe-3: #c28b13;
+  --color-retro-stripe-4: #cc4214;
+
+  --color-retro-yellow: #f4b333;
+  --color-retro-green: #69c24a;
+
+  --color-retro-user-1: #426fc4;
+  --color-retro-user-2: #60a551;
+  --color-retro-user-3: #d05a81;
+  --color-retro-user-4: #e4764f;
+  --color-retro-user-5: #dfae44;
+  --color-retro-user-6: #a454b8;
+
+  /* Font Sizes */
+  --text-retro-btn: 8px;
+  --text-retro-logo: 10px;
+  --text-retro-card-title: 12px;
+  --text-retro-label: 18px;
+  --text-retro-footer: 18px;
+  --text-retro-card-body: 20px;
+  --text-retro-nav: 22px;
+  --text-retro-body: 22px;
+  --text-retro-h1: 24px;
+
   /* Starlight Variables */
   --sl-font: "IBM Plex Mono", ui-monospace, monospace;
   --sl-color-accent: #000;
@@ -137,12 +172,12 @@
     font-family: "VT323", monospace;
   }
   h1 {
-    font-size: var(--font-size-retro-h1);
+    font-size: var(--text-retro-h1);
     font-family: "Press Start 2P", monospace;
     font-weight: normal;
   }
   h3 {
-    font-size: var(--font-size-retro-card-title);
+    font-size: var(--text-retro-card-title);
     font-family: "Press Start 2P", monospace;
     font-weight: normal;
   }

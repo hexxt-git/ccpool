@@ -4,3 +4,4 @@ dist
 .astro
 *.local
 *.tsbuildinfo
+.DS_Store

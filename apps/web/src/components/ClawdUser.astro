@@ -3,10 +3,10 @@ import Clawd from "./Clawd.astro";
 
 interface Props {
   name: string;
-  userNum: number; // 1 to 6
-  class?: string; // Positioning classes (e.g., "left-[30px] top-[10px]")
-  animationClass: string; // Animation classes (e.g., "animate-float-a")
-  flip?: boolean; // Flip horizontally
+  userNum: number;
+  class?: string;
+  animationClass: string;
+  flip?: boolean;
 }
 
 const { name, userNum, class: positionClass = "", animationClass, flip = false } = Astro.props;
@@ -15,7 +15,7 @@ const colorVar = `var(--color-retro-user-${userNum})`;
 
 <div class:list={["absolute flex w-[100px] flex-col items-center", animationClass, positionClass]}>
   <Clawd color={colorVar} class:list={["w-[84px]", flip && "-scale-x-100"]} />
-  <span class="font-vt -translate-y-4 text-xl tracking-[1px]" style={`color: ${colorVar};`}>
+  <span class="font-vt -translate-y-4 text-2xl tracking-[1px]" style={`color: ${colorVar};`}>
     {name}
   </span>
 </div>

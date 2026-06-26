@@ -11,19 +11,32 @@ const {
 ---
 
 <header
-  class="bg-retro-bg z-50 flex h-[60px] items-center justify-between border-b-2 border-[#1e1e1e] px-8 max-[640px]:px-4"
+  class="bg-retro-bg z-50 mx-auto flex h-[60px] w-full max-w-[1200px] items-center justify-between border-b-2 border-[#1e1e1e] px-8 max-[640px]:px-4"
 >
-  <div class="flex items-center gap-2">
+  <a href="/" class="flex items-center gap-2">
     <img
-      src="/ccshare.png"
+      src="/ccshare.webp"
       alt="CCShare"
       class="h-9 w-auto -translate-y-px [image-rendering:pixelated]"
     />
     <span class="font-press select-none text-[16px] uppercase tracking-[-1px]">
-      <span class="text-retro-orange">cc</span><span class="text-retro-fg">share</span>
+      <span class="text-retro-green">cc</span><span class="text-retro-fg">share</span>
     </span>
-  </div>
+  </a>
   <nav class="font-vt text-retro-nav flex items-center gap-6 lg:gap-12">
+    <a
+      href="/docs"
+      class="text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+    >
+      <svg viewBox="0 0 16 16" class="h-[22px] w-[22px] fill-current" shape-rendering="crispEdges">
+        <path
+          d="M3,1h7v1h-7z M3,2h6v1h-6z M10,2h1v1h-1z M3,3h6v1h-6z M10,3h2v1h-2z M3,4h10v11h-10z"
+          fill="currentColor"></path>
+        <path d="M5,6h6v2h-6z M5,9h6v2h-6z M5,12h4v2h-4z" fill="var(--color-retro-bg, #0c0c0c)"
+        ></path>
+      </svg>
+      docs
+    </a>
     <a
       href={githubUrl}
       target="_blank"

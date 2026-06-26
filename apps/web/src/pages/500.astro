@@ -1,0 +1,27 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Button from "../components/Button.astro";
+---
+
+<Layout title="500: SYSTEM FAULT — ccshare">
+  <main
+    class="mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-center justify-center p-10 max-[640px]:px-4 max-[640px]:py-8"
+  >
+    <div class="flex w-full max-w-[600px] select-none flex-col items-center gap-6 text-center">
+      <!-- CRT Screen -->
+      <div
+        class="border-retro-border relative mb-2 flex h-[150px] w-[180px] flex-col items-center justify-center overflow-hidden border-2 bg-[#040404]"
+      >
+        <!-- Error Code -->
+        <span class="font-press text-retro-orange text-[28px]">500</span>
+        <span class="font-vt mt-1 text-[18px] tracking-widest text-[#888]">SYS_FAULT</span>
+      </div>
+
+      <h1 class="font-press text-retro-h1 text-retro-orange uppercase">SYSTEM FAULT</h1>
+
+      <div class="mt-4">
+        <Button variant="primary" href="/">RETURN TO CABINET</Button>
+      </div>
+    </div>
+  </main>
+</Layout>

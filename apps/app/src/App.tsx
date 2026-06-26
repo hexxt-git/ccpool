@@ -18,48 +18,45 @@ function UsageBar({ pct }: { pct: number }) {
 export default function App() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-white p-8 font-mono text-black">
-      <div className="w-full max-w-xl border border-black p-6">
-        <div className="mb-4 text-xs uppercase tracking-widest text-neutral-400">
-          ▸ ccshare / usage dashboard
-        </div>
+      <main className="w-full max-w-xl border border-black p-6">
+        <header>
+          <h1 className="mb-4 text-xs uppercase tracking-widest text-neutral-400">
+            ▸ ccshare / usage dashboard
+          </h1>
+          <div className="mb-6 border-t border-black" aria-hidden="true" />
+        </header>
 
-        <div className="mb-6 border-t border-black" />
-
-        <div className="mb-6">
-          <div className="mb-3 text-xs uppercase tracking-widest text-neutral-400">
-            5-hour window
-          </div>
-          <div className="space-y-3">
+        <section className="mb-6">
+          <h2 className="mb-3 text-xs uppercase tracking-widest text-neutral-400">5-hour window</h2>
+          <ul className="space-y-3">
             {members.map((m) => (
-              <div key={m.name} className="flex items-center gap-4">
+              <li key={m.name} className="flex items-center gap-4">
                 <span className="w-12 text-xs">{m.name}</span>
                 <UsageBar pct={m.used5h} />
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
 
-        <div className="mb-6 border-t border-neutral-200" />
+        <div className="mb-6 border-t border-neutral-200" aria-hidden="true" />
 
-        <div>
-          <div className="mb-3 text-xs uppercase tracking-widest text-neutral-400">
-            weekly window
-          </div>
-          <div className="space-y-3">
+        <section>
+          <h2 className="mb-3 text-xs uppercase tracking-widest text-neutral-400">weekly window</h2>
+          <ul className="space-y-3">
             {members.map((m) => (
-              <div key={m.name} className="flex items-center gap-4">
+              <li key={m.name} className="flex items-center gap-4">
                 <span className="w-12 text-xs">{m.name}</span>
                 <UsageBar pct={m.used7d} />
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
 
-        <div className="mt-6 border-t border-black pt-4 text-xs text-neutral-400">
+        <footer className="mt-6 border-t border-black pt-4 text-xs text-neutral-400">
           next 5h reset in <span className="text-black">2h 14m</span> &nbsp;·&nbsp; weekly reset in{" "}
           <span className="text-black">4d 07h</span>
-        </div>
-      </div>
+        </footer>
+      </main>
     </div>
   );
 }

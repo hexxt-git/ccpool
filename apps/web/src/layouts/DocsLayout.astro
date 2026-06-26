@@ -1,0 +1,262 @@
+---
+import Layout from "./Layout.astro";
+
+const { frontmatter } = Astro.props;
+
+const pathname = Astro.url.pathname;
+// Match both with and without trailing slash, as well as dev/prod path differences
+const isIntroduction = pathname.endsWith("/docs") || pathname.endsWith("/docs/");
+const isInstallation =
+  pathname.endsWith("/docs/installation") || pathname.endsWith("/docs/installation/");
+const isPrivacy =
+  pathname.endsWith("/docs/legal/privacy") || pathname.endsWith("/docs/legal/privacy/");
+const isTerms = pathname.endsWith("/docs/legal/terms") || pathname.endsWith("/docs/legal/terms/");
+const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs/legal/dmca/");
+---
+
+<Layout title={`${frontmatter.title} — ccshare Docs`}>
+  <main class="mx-auto w-full max-w-[1200px] flex-1 p-10 max-[640px]:px-4 max-[640px]:py-8">
+    <div class="grid grid-cols-1 gap-8 md:grid-cols-[280px_1fr]">
+      <!-- Left Column: Documentation Navigation -->
+      <aside class="flex flex-col gap-4">
+        <!-- Back to home link -->
+        <div>
+          <a
+            href="/"
+            class="font-vt text-retro-body hover:text-retro-orange group flex select-none items-center gap-2 text-[#888] no-underline transition-colors"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              class="h-[18px] w-[18px] transform fill-current transition-transform group-hover:-translate-x-1"
+              shape-rendering="crispEdges"
+            >
+              <path
+                d="M6,2h2v2h-2z M4,4h2v2h-2z M2,6h2v2h-2z M0,8h16v2h-16z M2,10h2v2h-2z M4,12h2v2h-2z M6,14h2v2h-2z"
+              ></path>
+            </svg>
+            RETURN TO CABINET
+          </a>
+        </div>
+
+        <!-- Sidebar Navigation Card -->
+        <nav class="border-retro-border bg-retro-card flex flex-col gap-4 border-2 p-6">
+          <!-- Getting Started Section -->
+          <div class="flex flex-col gap-2">
+            <h2 class="font-press select-none text-[10px] uppercase tracking-wider text-[#555]">
+              Getting Started
+            </h2>
+            <ul class="font-vt flex flex-col gap-2 text-[20px]">
+              <li>
+                <a
+                  href="/docs"
+                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
+                    isIntroduction ? "text-retro-orange" : "text-[#888]"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 8 8"
+                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
+                      isIntroduction ? "opacity-100" : "opacity-0"
+                    }`}
+                    shape-rendering="crispEdges"
+                  >
+                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
+                  </svg>
+                  INTRODUCTION
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/docs/installation"
+                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
+                    isInstallation ? "text-retro-orange" : "text-[#888]"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 8 8"
+                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
+                      isInstallation ? "opacity-100" : "opacity-0"
+                    }`}
+                    shape-rendering="crispEdges"
+                  >
+                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
+                  </svg>
+                  INSTALLATION
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Legal Section -->
+          <div class="flex flex-col gap-2 border-t border-[#222] pt-2">
+            <h2 class="font-press select-none text-[10px] uppercase tracking-wider text-[#555]">
+              Legal Policies
+            </h2>
+            <ul class="font-vt flex flex-col gap-2 text-[20px]">
+              <li>
+                <a
+                  href="/docs/legal/privacy"
+                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
+                    isPrivacy ? "text-retro-orange" : "text-[#888]"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 8 8"
+                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
+                      isPrivacy ? "opacity-100" : "opacity-0"
+                    }`}
+                    shape-rendering="crispEdges"
+                  >
+                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
+                  </svg>
+                  PRIVACY POLICY
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/docs/legal/terms"
+                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
+                    isTerms ? "text-retro-orange" : "text-[#888]"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 8 8"
+                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
+                      isTerms ? "opacity-100" : "opacity-0"
+                    }`}
+                    shape-rendering="crispEdges"
+                  >
+                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
+                  </svg>
+                  TERMS OF USE
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/docs/legal/dmca"
+                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
+                    isDmca ? "text-retro-orange" : "text-[#888]"
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 8 8"
+                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
+                      isDmca ? "opacity-100" : "opacity-0"
+                    }`}
+                    shape-rendering="crispEdges"
+                  >
+                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
+                  </svg>
+                  DMCA POLICY
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- Right Column: Main Content -->
+      <article
+        class="border-retro-border bg-retro-card flex flex-col gap-6 border-2 p-8 max-[640px]:p-5"
+      >
+        <h1
+          class="font-press text-retro-h1 text-retro-orange border-retro-border border-b pb-5 uppercase leading-[1.4] tracking-[-0.5px]"
+        >
+          {frontmatter.title}
+        </h1>
+
+        <div class="docs-content font-vt text-retro-body leading-[1.1] text-[#ccc]">
+          <slot />
+        </div>
+      </article>
+    </div>
+  </main>
+</Layout>
+
+<style is:global>
+  .docs-content h2 {
+    font-family: "Press Start 2P", monospace;
+    font-size: var(--text-retro-card-title);
+    color: var(--color-retro-yellow);
+    margin-top: 1.85rem;
+    margin-bottom: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1.4;
+  }
+  .docs-content h3 {
+    font-family: "Press Start 2P", monospace;
+    font-size: 10px;
+    color: var(--color-retro-orange);
+    margin-top: 1.4rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    line-height: 1.4;
+  }
+  .docs-content p {
+    margin-bottom: 1rem;
+  }
+  .docs-content ul {
+    margin-left: 1.5rem;
+    margin-bottom: 1rem;
+    list-style-type: square;
+  }
+  .docs-content ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1rem;
+    list-style-type: decimal;
+  }
+  .docs-content li {
+    margin-bottom: 0.25rem;
+  }
+  .docs-content a {
+    color: var(--color-retro-orange);
+    text-decoration: underline;
+  }
+  .docs-content a:hover {
+    color: var(--color-retro-fg);
+  }
+  .docs-content code {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    background-color: #161616;
+    color: var(--color-retro-yellow);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0px;
+    border: 1px solid var(--color-retro-border);
+  }
+  .docs-content pre {
+    --astro-code-color-text: var(--color-retro-fg);
+    --astro-code-color-background: #181818;
+    --astro-code-token-constant: var(--color-retro-yellow);
+    --astro-code-token-string: var(--color-retro-green);
+    --astro-code-token-comment: #666;
+    --astro-code-token-keyword: var(--color-retro-orange);
+    --astro-code-token-parameter: var(--color-retro-fg);
+    --astro-code-token-function: var(--color-retro-yellow);
+    --astro-code-token-string-expression: var(--color-retro-green);
+    --astro-code-token-punctuation: var(--color-retro-fg);
+    --astro-code-token-link: var(--color-retro-orange);
+
+    background-color: var(--astro-code-color-background) !important;
+    color: var(--astro-code-color-text) !important;
+    border: 2px solid var(--color-retro-border);
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.4rem;
+    margin-bottom: 0.8rem;
+    overflow-x: auto;
+    width: fit-content;
+    min-width: 260px;
+    max-width: 100%;
+    font-size: 13.5px;
+    line-height: 1.2;
+  }
+  .docs-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    font-size: inherit;
+    line-height: inherit;
+  }
+</style>

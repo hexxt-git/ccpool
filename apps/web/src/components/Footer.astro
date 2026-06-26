@@ -1,4 +1,6 @@
 ---
+import FooterStripes from "./FooterStripes";
+
 interface Props {
   className?: string;
 }
@@ -6,25 +8,47 @@ interface Props {
 const { className = "" } = Astro.props;
 ---
 
-<div class:list={["z-[90] mb-4 mt-auto flex w-full flex-col gap-[3px]", className]}>
-  <div class="bg-retro-stripe-1 h-[3px]"></div>
-  <div class="bg-retro-stripe-2 h-[3px]"></div>
-  <div class="bg-retro-stripe-3 h-[3px]"></div>
-  <div class="bg-retro-stripe-4 h-[3px]"></div>
-</div>
+<div class="mx-auto mt-auto flex w-full max-w-[1200px] flex-col">
+  <FooterStripes client:load className={className} />
 
-<footer
-  class="font-vt text-retro-footer z-[80] flex items-center justify-between border-t-2 border-[#1e1e1e] bg-[#08080c] px-8 py-4 max-[640px]:px-4 max-[480px]:flex-col max-[480px]:gap-2"
->
-  <div class="flex items-center gap-[10px]">
-    <img
-      src="/ccshare.png"
-      alt="CCShare"
-      class="h-6 w-auto select-none [image-rendering:pixelated]"
-    />
-    <span class="select-none tracking-[1px] opacity-40">ccshare © 2026</span>
-  </div>
-  <div class="flex select-none gap-[22px]">
-    <span class="opacity-40">INSERT COIN TO LOAD SECRETS</span>
-  </div>
-</footer>
+  <footer
+    class="font-vt text-retro-footer z-[80] flex items-center justify-between px-8 py-4 max-[640px]:px-4 max-[480px]:flex-col max-[480px]:gap-2"
+  >
+    <div class="flex items-center gap-[10px]">
+      <img
+        src="/ccshare.webp"
+        alt="CCShare"
+        class="h-6 w-auto translate-y-0.5 select-none [image-rendering:pixelated]"
+      />
+      <span class="select-none tracking-[1px] opacity-40">ccshare © 2026</span>
+    </div>
+    <nav>
+      <ul class="flex gap-[22px]">
+        <li>
+          <a
+            href="/docs/legal/privacy"
+            class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"
+          >
+            PRIVACY POLICY
+          </a>
+        </li>
+        <li>
+          <a
+            href="/docs/legal/terms"
+            class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"
+          >
+            TERMS OF USE
+          </a>
+        </li>
+        <li>
+          <a
+            href="/docs/legal/dmca"
+            class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"
+          >
+            DMCA
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </footer>
+</div>

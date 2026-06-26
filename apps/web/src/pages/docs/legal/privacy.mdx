@@ -1,0 +1,31 @@
+---
+layout: ../../../layouts/DocsLayout.astro
+title: Privacy Policy
+description: Privacy Policy for ccshare.
+---
+
+Last Updated: June 26, 2026
+
+We believe in maximum privacy. Since we don't have tracking, advertisements, or analytics databases set up, our policy is straightforward:
+
+## 1. No Data Persistence
+
+We do not store, inspect, or persist the contents of your prompts or AI model outputs. All payloads are streamed directly to your configured upstream AI providers.
+
+## 2. Minimal Transient Logs
+
+To support rate limiting and fair queue scheduling, self-hosted proxy instances may temporarily track:
+
+- **Token Counts**: To enforce usage limits.
+- **Request Timestamps**: To calculate consumption slots.
+- **Local Usernames**: To associate consumption with your configured team handles.
+
+These logs are kept locally in memory or temporary storage and are automatically pruned (typically within 7 days).
+
+## 3. Upstream Providers
+
+Your prompts go directly to the configured upstream AI provider (e.g., Anthropic, OpenAI) according to your configured API keys. Please review the privacy policies of the upstream providers for details on how they handle API payloads.
+
+## 4. Questions
+
+If you have any questions, please open an issue on our [GitHub Repository](https://github.com/hexxt-git/ccshare).
