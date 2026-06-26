@@ -11,9 +11,16 @@ const {
 ---
 
 <header
-  class="bg-retro-bg z-50 mx-auto flex h-[60px] w-full max-w-[1200px] items-center justify-between border-b-2 border-[#1e1e1e] px-8 max-[640px]:px-4"
+  class="bg-retro-bg border-b-3 sticky top-0 z-50 mx-auto flex h-[60px] w-full max-w-[1200px] items-center justify-between border-[#1e1e1e] px-8 max-[640px]:px-4"
 >
-  <a href="/" class="flex items-center gap-2">
+  <a
+    href="/"
+    class="retro-reveal flex items-center gap-2"
+    data-stripes="3"
+    data-color="bg"
+    data-direction="left"
+    data-delay="0.1"
+  >
     <img
       src="/ccshare.webp"
       alt="CCShare"
@@ -23,10 +30,14 @@ const {
       <span class="text-retro-green">cc</span><span class="text-retro-fg">share</span>
     </span>
   </a>
-  <nav class="font-vt text-retro-nav flex items-center gap-6 lg:gap-12">
+  <nav class="font-vt text-retro-nav flex items-center gap-6 max-[640px]:hidden lg:gap-12">
     <a
       href="/docs"
-      class="text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      class="retro-reveal text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      data-stripes="2"
+      data-color="bg"
+      data-direction="right"
+      data-delay="0.2"
     >
       <svg viewBox="0 0 16 16" class="h-[22px] w-[22px] fill-current" shape-rendering="crispEdges">
         <path
@@ -41,7 +52,11 @@ const {
       href={githubUrl}
       target="_blank"
       rel="noopener noreferrer"
-      class="text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      class="retro-reveal text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      data-stripes="2"
+      data-color="bg"
+      data-direction="right"
+      data-delay="0.3"
     >
       <svg viewBox="0 0 16 16" class="h-[22px] w-[22px] fill-current" shape-rendering="crispEdges">
         <path
@@ -53,7 +68,11 @@ const {
     <a
       href={linkedinUrl}
       target="_blank"
-      class="text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      class="retro-reveal text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
+      data-stripes="2"
+      data-color="bg"
+      data-direction="right"
+      data-delay="0.4"
     >
       <svg viewBox="0 0 16 16" class="h-[22px] w-[22px] fill-current" shape-rendering="crispEdges">
         <rect width="16" height="16" fill="currentColor"></rect>
@@ -64,4 +83,89 @@ const {
       linkedin
     </a>
   </nav>
+
+  <!-- Mobile Hamburger Button -->
+  <button
+    id="mobile-menu-btn"
+    class="text-retro-fg hidden cursor-pointer p-2 opacity-60 transition-opacity hover:opacity-100 max-[640px]:block"
+    aria-label="Toggle mobile menu"
+  >
+    <svg viewBox="0 0 16 16" class="h-6 w-6 fill-current" shape-rendering="crispEdges">
+      <path d="M2,3h12v2h-12z M2,7h12v2h-12z M2,11h12v2h-12z"></path>
+    </svg>
+  </button>
+
+  <!-- Mobile Dropdown Menu -->
+  <div
+    id="mobile-menu"
+    class="border-b-3 bg-retro-bg absolute left-0 right-0 top-[60px] z-40 hidden max-h-0 flex-col overflow-hidden border-[#1e1e1e] transition-[max-height] duration-300 ease-in-out max-[640px]:flex"
+  >
+    <nav class="font-vt text-retro-nav flex flex-col items-start gap-6 px-4 py-6">
+      <a
+        href="/docs"
+        class="text-retro-fg flex items-center gap-3 no-underline opacity-80 hover:opacity-100"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          class="h-[22px] w-[22px] fill-current"
+          shape-rendering="crispEdges"
+        >
+          <path
+            d="M3,1h7v1h-7z M3,2h6v1h-6z M10,2h1v1h-1z M3,3h6v1h-6z M10,3h2v1h-2z M3,4h10v11h-10z"
+            fill="currentColor"></path>
+          <path d="M5,6h6v2h-6z M5,9h6v2h-6z M5,12h4v2h-4z" fill="var(--color-retro-bg, #0c0c0c)"
+          ></path>
+        </svg>
+        documentation
+      </a>
+      <a
+        href={githubUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-retro-fg flex items-center gap-3 no-underline opacity-80 hover:opacity-100"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          class="h-[22px] w-[22px] fill-current"
+          shape-rendering="crispEdges"
+        >
+          <path
+            d="M2,2h2v1h-2z M10,2h2v1h-2z M2,3h10v1h-10z M1,4h12v1h-12z M1,5h12v4h-12z M2,9h10v1h-10z M3,10h8v1h-8z M4,11h6v1h-6z M3,12h8v1h-8z M2,13h3v1h-3z M6,13h2v1h-2z M9,13h3v1h-3z M1,14h3v1h-3z M6,14h2v1h-2z M10,14h3v1h-3z"
+          ></path>
+        </svg>
+        github
+      </a>
+      <a
+        href={linkedinUrl}
+        target="_blank"
+        class="text-retro-fg flex items-center gap-3 no-underline opacity-80 hover:opacity-100"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          class="h-[22px] w-[22px] fill-current"
+          shape-rendering="crispEdges"
+        >
+          <rect width="16" height="16" fill="currentColor"></rect>
+          <path
+            d="M3,2h2v2h-2z M3,6h2v6h-2z M7,6h2v6h-2z M11,6h2v6h-2z M7,4h6v2h-6z"
+            fill="var(--color-retro-bg, #0c0c0c)"></path>
+        </svg>
+        linkedin
+      </a>
+    </nav>
+  </div>
 </header>
+
+<script>
+  document.addEventListener("astro:page-load", () => {
+    const btn = document.getElementById("mobile-menu-btn");
+    const menu = document.getElementById("mobile-menu");
+
+    if (btn && menu) {
+      btn.addEventListener("click", () => {
+        menu.classList.toggle("max-h-0");
+        menu.classList.toggle("max-h-[300px]");
+      });
+    }
+  });
+</script>

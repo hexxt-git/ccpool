@@ -6,13 +6,16 @@ interface FooterStripesProps {
   className?: string;
 }
 
-export default function FooterStripes({ sliceDuration = 0.8, className = "" }: FooterStripesProps) {
-  const slices = Array.from({ length: 12 }, (_, i) => i + 1);
+export default function FooterStripes({
+  sliceDuration = 0.41,
+  className = "",
+}: FooterStripesProps) {
+  const slices = Array.from({ length: 8 }, (_, i) => i + 1);
 
   return (
-    <div className={`flex w-full select-none flex-col gap-[3px] ${className}`}>
+    <div className={`flex w-full select-none flex-col gap-[4px] ${className}`}>
       {Array.from({ length: 4 }).map((_, rowIndex) => (
-        <div key={rowIndex} className="grid w-full grid-cols-12" style={{ height: "3px" }}>
+        <div key={rowIndex} className="grid w-full grid-cols-8" style={{ height: "4px" }}>
           {slices.map((sliceIndex) => {
             const isEven = sliceIndex % 2 === 0;
 

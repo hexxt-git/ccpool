@@ -14,7 +14,13 @@ const { className = "" } = Astro.props;
   <footer
     class="font-vt text-retro-footer z-[80] flex items-center justify-between px-8 py-4 max-[640px]:px-4 max-[480px]:flex-col max-[480px]:gap-2"
   >
-    <div class="flex items-center gap-[10px]">
+    <div
+      class="retro-reveal flex items-center gap-[10px]"
+      data-stripes="2"
+      data-color="bg"
+      data-direction="right"
+      data-delay="0.8"
+    >
       <img
         src="/ccshare.webp"
         alt="CCShare"
@@ -24,7 +30,13 @@ const { className = "" } = Astro.props;
     </div>
     <nav>
       <ul class="flex gap-[22px]">
-        <li>
+        <li
+          class="retro-reveal"
+          data-stripes="2"
+          data-color="bg"
+          data-direction="left"
+          data-delay="0.9"
+        >
           <a
             href="/docs/legal/privacy"
             class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"
@@ -32,7 +44,13 @@ const { className = "" } = Astro.props;
             PRIVACY POLICY
           </a>
         </li>
-        <li>
+        <li
+          class="retro-reveal"
+          data-stripes="2"
+          data-color="bg"
+          data-direction="left"
+          data-delay="1.0"
+        >
           <a
             href="/docs/legal/terms"
             class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"
@@ -40,7 +58,13 @@ const { className = "" } = Astro.props;
             TERMS OF USE
           </a>
         </li>
-        <li>
+        <li
+          class="retro-reveal"
+          data-stripes="2"
+          data-color="bg"
+          data-direction="left"
+          data-delay="1.1"
+        >
           <a
             href="/docs/legal/dmca"
             class="text-retro-fg hover:text-retro-orange no-underline opacity-60 transition-colors hover:opacity-100"

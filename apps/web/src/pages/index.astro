@@ -1,7 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Button from "../components/Button.astro";
-import ClawdUser from "../components/ClawdUser.astro";
+import Visualization from "../components/Visualization.astro";
 ---
 
 <Layout title="ccshare">
@@ -17,100 +17,59 @@ import ClawdUser from "../components/ClawdUser.astro";
       <div class="flex flex-col gap-7">
         <div>
           <h1
-            class="font-press text-retro-h1 text-retro-fg mb-[14px] leading-[1.4] tracking-[-1px]"
+            class="retro-reveal font-press text-retro-h1 text-retro-fg mb-[14px] leading-[1.4] tracking-[-1px]"
+            data-stripes="4"
+            data-color="stripes"
+            data-delay="0.1"
           >
             CLAUDE SUBSCRIPTION <br /><span class="text-retro-orange">FAIR SHARING</span>
           </h1>
-          <p class="font-vt text-retro-body mt-3 leading-[1.1] text-[#ccc]">
+          <p
+            class="retro-reveal font-vt text-retro-body mt-3 w-fit leading-[1.1] text-[#ccc]"
+            data-stripes="3"
+            data-color="bg"
+            data-delay="0.4"
+          >
             ccshare is a CLI tool for claude code subscription sharing with fair usage limits for
             teams.
           </p>
         </div>
 
         <!-- PLAY BUTTONS -->
-        <div class="mt-2 flex flex-wrap gap-4">
-          <Button variant="primary" href="/docs">GET STARTED</Button>
-          <Button variant="outline" href="https://github.com/hexxt-git/ccshare">VIEW GITHUB</Button>
+        <div
+          class="mt-2 flex flex-wrap gap-4 max-[640px]:w-full max-[640px]:flex-col max-[640px]:gap-3"
+        >
+          <div
+            class="retro-reveal max-[640px]:w-full"
+            data-stripes="2"
+            data-color="bg"
+            data-delay="0.7"
+          >
+            <Button
+              variant="primary"
+              href="/docs"
+              class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
+              >GET STARTED</Button
+            >
+          </div>
+          <div
+            class="retro-reveal max-[640px]:w-full"
+            data-stripes="2"
+            data-color="bg"
+            data-delay="0.9"
+          >
+            <Button
+              variant="outline"
+              href="https://github.com/hexxt-git/ccshare"
+              class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
+              >VIEW GITHUB</Button
+            >
+          </div>
         </div>
       </div>
 
       <!-- VISUALIZATION -->
-      <div
-        class="relative flex h-[340px] w-full items-center justify-center overflow-visible max-[640px]:h-[200px] max-[480px]:h-[170px]"
-      >
-        <div
-          class="relative h-[340px] w-[640px] shrink-0 origin-center scale-90 overflow-visible max-[640px]:scale-[0.55] max-[480px]:scale-[0.45] max-[380px]:scale-[0.4]"
-        >
-          <!-- MONITOR -->
-          <div class="absolute left-[180px] top-10 w-[280px]">
-            <img
-              src="/desktop.webp"
-              alt="monitor"
-              class="block w-full opacity-90 [image-rendering:pixelated]"
-            />
-            <div
-              class="absolute left-[58px] top-[63px] flex h-[38%] w-[38%] items-center justify-center overflow-hidden"
-            >
-              <img
-                src="/claude.webp"
-                alt="Claude"
-                class="animate-spin-slow h-auto w-full opacity-90 [image-rendering:pixelated]"
-              />
-            </div>
-          </div>
-
-          <!-- L1 -->
-          <ClawdUser
-            name="user_1"
-            userNum={1}
-            class="left-[30px] top-[10px]"
-            animationClass="animate-float-a"
-          />
-
-          <!-- L2 -->
-          <ClawdUser
-            name="user_3"
-            userNum={3}
-            class="left-[0px] top-[120px]"
-            animationClass="animate-float-b"
-          />
-
-          <!-- L3 -->
-          <ClawdUser
-            name="user_5"
-            userNum={5}
-            class="left-[30px] top-[230px]"
-            animationClass="animate-float-a-slow"
-          />
-
-          <!-- R1 -->
-          <ClawdUser
-            name="user_2"
-            userNum={2}
-            class="left-[510px] top-[10px]"
-            animationClass="animate-float-b-fast"
-            flip
-          />
-
-          <!-- R2 -->
-          <ClawdUser
-            name="user_4"
-            userNum={4}
-            class="left-[540px] top-[120px]"
-            animationClass="animate-float-a-mid"
-            flip
-          />
-
-          <!-- R3 -->
-          <ClawdUser
-            name="user_6"
-            userNum={6}
-            class="left-[510px] top-[230px]"
-            animationClass="animate-float-b-mid"
-            flip
-          />
-        </div>
-      </div>
+      <Visualization />
     </section>
 
     <!-- BOTTOM ROW: 3 FEATURE CARDS -->
@@ -118,7 +77,11 @@ import ClawdUser from "../components/ClawdUser.astro";
       <ul class="grid w-full grid-cols-3 gap-5 max-[950px]:grid-cols-1 max-[950px]:gap-4">
         <li>
           <article
-            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            class="retro-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            data-stripes="6"
+            data-color="bg"
+            data-direction="right"
+            data-delay="0.2"
           >
             <h2
               class="font-press text-retro-card-title text-retro-orange leading-[1.4] tracking-[0.5px]"
@@ -134,7 +97,11 @@ import ClawdUser from "../components/ClawdUser.astro";
 
         <li>
           <article
-            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            class="retro-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            data-stripes="6"
+            data-color="bg"
+            data-direction="left"
+            data-delay="0.4"
           >
             <h2
               class="font-press text-retro-card-title text-retro-yellow leading-[1.4] tracking-[0.5px]"
@@ -150,7 +117,11 @@ import ClawdUser from "../components/ClawdUser.astro";
 
         <li>
           <article
-            class="border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            class="retro-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4"
+            data-stripes="6"
+            data-color="bg"
+            data-direction="right"
+            data-delay="0.6"
           >
             <h2
               class="font-press text-retro-card-title text-retro-green leading-[1.4] tracking-[0.5px]"

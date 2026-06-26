@@ -1,4 +1,5 @@
 ---
+import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
@@ -28,7 +29,7 @@ const canonicalURL = Astro.site
     <!-- Global Metadata -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/png" href="/clawd.png" />
+    <link rel="icon" type="image/webp" href="/ccshare.webp" />
     <meta name="generator" content={Astro.generator} />
 
     <!-- Canonical URL -->
@@ -52,10 +53,177 @@ const canonicalURL = Astro.site
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
     <meta property="twitter:image" content={image} />
+    <ClientRouter />
   </head>
   <body class="bg-retro-bg text-retro-fg font-vt flex min-h-screen flex-col overflow-x-hidden">
-    <Header />
+    <div transition:persist="header" class="bg-retro-bg sticky top-0 z-50 w-full">
+      <Header />
+    </div>
     <slot />
-    <Footer />
+    <div transition:persist="footer">
+      <Footer />
+    </div>
+
+    <script>
+      import { animate, inView, stagger } from "motion";
+
+      const initReveals = () => {
+        // Hide all dots immediately via JS to avoid class conflicts
+        document.querySelectorAll("[class*='clawd-dot-']").forEach((dot) => {
+          (dot as HTMLElement).style.opacity = "0";
+        });
+
+        const colors = [
+          "var(--color-retro-stripe-1)",
+          "var(--color-retro-stripe-2)",
+          "var(--color-retro-stripe-3)",
+          "var(--color-retro-stripe-4)",
+        ];
+
+        document.querySelectorAll(".retro-reveal:not(.initialized)").forEach((el) => {
+          el.classList.add("initialized");
+          const htmlEl = el as HTMLElement;
+
+          if (getComputedStyle(htmlEl).position === "static") {
+            htmlEl.style.position = "relative";
+          }
+
+          const stripesCount = parseInt(htmlEl.getAttribute("data-stripes") || "4");
+          const delay = parseFloat(htmlEl.getAttribute("data-delay") || "0.1");
+          const direction = htmlEl.getAttribute("data-direction") || "alternate";
+          const colorMode = htmlEl.getAttribute("data-color") || "bg";
+
+          let defaultBg = "var(--color-retro-bg)";
+          let currentEl: HTMLElement | null = htmlEl;
+          while (currentEl) {
+            const bg = window.getComputedStyle(currentEl).backgroundColor;
+            if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+              defaultBg = bg;
+              break;
+            }
+            currentEl = currentEl.parentElement;
+          }
+
+          const overlay = document.createElement("div");
+          overlay.className = "absolute inset-0 z-10 flex flex-col pointer-events-none";
+          // to fix any 1px gap issues with absolute positioning
+          overlay.style.margin = "-1px";
+
+          const stripes: HTMLDivElement[] = [];
+          for (let i = 0; i < stripesCount; i++) {
+            const stripe = document.createElement("div");
+            stripe.className = "w-full flex-1";
+
+            if (colorMode === "stripes") {
+              stripe.style.backgroundColor = colors[i % colors.length];
+            } else {
+              stripe.style.backgroundColor = defaultBg;
+            }
+
+            let origin = "left";
+            if (direction === "right") origin = "right";
+            else if (direction === "alternate") origin = i % 2 === 0 ? "left" : "right";
+
+            stripe.style.transformOrigin = origin;
+            stripe.style.transform = "scaleX(1)";
+
+            overlay.appendChild(stripe);
+            stripes.push(stripe);
+          }
+
+          htmlEl.appendChild(overlay);
+
+          inView(
+            htmlEl,
+            () => {
+              animate(
+                stripes,
+                { scaleX: 0 },
+                {
+                  delay: stagger(0.15, { startDelay: delay }),
+                  duration: 0.46,
+                  ease: "circOut",
+                }
+              );
+            },
+            { amount: 0.1 }
+          );
+        });
+
+        const clawds = [
+          document.querySelector(".clawd-monitor"),
+          document.querySelector(".clawd-logo"),
+          document.querySelector(".clawd-1"),
+          document.querySelector(".clawd-3"),
+          document.querySelector(".clawd-5"),
+          document.querySelector(".clawd-2"),
+          document.querySelector(".clawd-4"),
+          document.querySelector(".clawd-6"),
+        ].filter(Boolean) as HTMLElement[];
+
+        if (clawds.length > 0) {
+          clawds.forEach((clawd, index) => {
+            inView(
+              clawd,
+              () => {
+                const baseDelay = index * 0.3 + 0.4;
+
+                if (clawd.classList.contains("clawd-logo")) {
+                  animate(
+                    clawd,
+                    { opacity: [0, 1, 0, 1] },
+                    {
+                      delay: baseDelay,
+                      duration: 0.3,
+                      ease: "linear",
+                    }
+                  );
+                } else {
+                  animate(
+                    clawd,
+                    { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"], opacity: [1, 1] },
+                    {
+                      delay: baseDelay,
+                      duration: 0.4,
+                      ease: "linear",
+                    }
+                  );
+                }
+
+                // Animate connection dots radiating outwards natively to guarantee execution
+                const match = clawd.className.match(/clawd-(\d)/);
+                if (match) {
+                  const id = match[1];
+                  const dots = document.querySelectorAll(`.clawd-dot-${id}`);
+                  if (dots.length > 0) {
+                    // Wait for the 0.4s avatar sweep to finish + 900ms extra pause before drawing dots
+                    setTimeout(
+                      () => {
+                        dots.forEach((dot, i) => {
+                          setTimeout(
+                            () => {
+                              (dot as HTMLElement).style.opacity = "1";
+                            },
+                            (dots.length - 1 - i) * 50
+                          );
+                        });
+                      },
+                      (baseDelay + 1.3) * 1000
+                    );
+                  }
+                }
+              },
+              { amount: 0.1 }
+            );
+          });
+        }
+      };
+
+      // Run on initial load
+      initReveals();
+
+      // If using Astro view transitions in the future, it handles re-runs
+      document.addEventListener("astro:page-load", initReveals);
+    </script>
   </body>
 </html>

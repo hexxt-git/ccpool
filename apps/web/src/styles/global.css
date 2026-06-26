@@ -60,16 +60,16 @@
   }
 
   /* Animations */
-  --animate-blink: blink 1s step-end infinite;
-  --animate-crt-warp: crt-warp 6s ease-in-out infinite;
-  --animate-float-avatar: float-avatar 3.5s ease-in-out infinite;
-  --animate-float-a: floatA 3.4s ease-in-out infinite;
-  --animate-float-b: floatB 4.1s ease-in-out infinite;
-  --animate-float-a-slow: floatA 4.6s ease-in-out infinite;
-  --animate-float-b-fast: floatB 2.9s ease-in-out infinite;
-  --animate-float-a-mid: floatA 3.7s ease-in-out infinite;
-  --animate-float-b-mid: floatB 3.3s ease-in-out infinite;
-  --animate-spin-slow: spin 12s linear infinite;
+  --animate-blink: blink 0.512s step-end infinite;
+  --animate-crt-warp: crt-warp 3.072s ease-in-out infinite;
+  --animate-float-avatar: float-avatar 1.792s ease-in-out infinite;
+  --animate-float-a: floatA 1.74s ease-in-out infinite;
+  --animate-float-b: floatB 2.099s ease-in-out infinite;
+  --animate-float-a-slow: floatA 2.355s ease-in-out infinite;
+  --animate-float-b-fast: floatB 1.484s ease-in-out infinite;
+  --animate-float-a-mid: floatA 1.894s ease-in-out infinite;
+  --animate-float-b-mid: floatB 1.689s ease-in-out infinite;
+  --animate-spin-slow: spin 6.144s linear infinite;
 
   /* Colors derived in theme */
   --color-retro-bg: var(--color-retro-bg);
