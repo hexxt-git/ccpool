@@ -4,7 +4,10 @@ interface Props {
   linkedinUrl?: string;
 }
 
-const { githubUrl = "https://github.com/hexxt-git/ccshare", linkedinUrl = "#" } = Astro.props;
+const {
+  githubUrl = "https://github.com/hexxt-git/ccshare",
+  linkedinUrl = "https://linkedin.com/in/zeghdani",
+} = Astro.props;
 ---
 
 <header
@@ -36,6 +39,7 @@ const { githubUrl = "https://github.com/hexxt-git/ccshare", linkedinUrl = "#" } 
     </a>
     <a
       href={linkedinUrl}
+      target="_blank"
       class="text-retro-fg flex items-center gap-2 no-underline opacity-60 transition-opacity hover:opacity-100"
     >
       <svg viewBox="0 0 16 16" class="h-[22px] w-[22px] fill-current" shape-rendering="crispEdges">

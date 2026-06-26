@@ -1,13 +1,12 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
-import tailwind from "@astrojs/tailwind";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   integrations: [
-    tailwind({ applyBaseStyles: false }),
     starlight({
       title: "ccshare",
-      description: "Fair Claude subscription sharing across 5-hour and weekly usage windows.",
+      description: "claude code subscription sharing with fair usage limits for teams",
       social: { github: "https://github.com/hexxt-git/ccshare" },
       customCss: ["./src/styles/global.css"],
       sidebar: [
@@ -21,4 +20,7 @@ export default defineConfig({
       ],
     }),
   ],
+  vite: {
+    plugins: [tailwindcss()],
+  },
 });

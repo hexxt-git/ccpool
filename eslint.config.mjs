@@ -9,6 +9,18 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        performance: "readonly",
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        console: "readonly",
+        process: "readonly",
+      },
     },
     plugins: { "@typescript-eslint": tsPlugin },
     rules: {
@@ -17,6 +29,6 @@ export default [
     },
   },
   {
-    ignores: ["dist/**", ".astro/**", "node_modules/**"],
+    ignores: ["**/dist/**", "**/.astro/**", "**/node_modules/**", "**/*.d.ts"],
   },
 ];

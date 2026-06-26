@@ -1,11 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
-:root {
-  /* Retro Design Tokens */
+@import "tailwindcss";
+
+@theme {
+  /* Fonts */
+  --font-press: "Press Start 2P", monospace;
+  --font-vt: "VT323", monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Colors */
   --color-retro-bg: #0c0c0c;
   --color-retro-fg: #f0e8c8;
   --color-retro-orange: #e8632a;
@@ -24,23 +28,88 @@
   --color-retro-feat-2: #f4b333;
   --color-retro-feat-3: #69c24a;
 
-  --color-retro-user-1: #506ec2;
-  --color-retro-user-2: #4ea137;
-  --color-retro-user-3: #9650c2;
-  --color-retro-user-4: #ba513c;
-  --color-retro-user-5: #ba9940;
-  --color-retro-user-6: #39ab8f;
+  --color-retro-user-1: #5aa7b6; /* 10% More Saturated Slate Cyan */
+  --color-retro-user-2: #60a551; /* 10% More Saturated Phosphor Green */
+  --color-retro-user-3: #d05a81; /* 10% More Saturated Rose/Berry */
+  --color-retro-user-4: #e4764f; /* 10% More Saturated Coral/Orange */
+  --color-retro-user-5: #eab239; /* 10% More Saturated Amber Yellow */
+  --color-retro-user-6: #a454b8; /* 10% More Saturated Soft Purple */
 
-  --font-size-retro-btn: 8px;
-  --font-size-retro-logo: 10px;
-  --font-size-retro-card-title: 12px;
-  --font-size-retro-label: 18px;
-  --font-size-retro-footer: 18px;
-  --font-size-retro-card-body: 20px;
-  --font-size-retro-nav: 22px;
-  --font-size-retro-body: 22px;
-  --font-size-retro-h1: 24px;
+  /* Font Sizes */
+  --text-retro-btn: 8px;
+  --text-retro-logo: 10px;
+  --text-retro-card-title: 12px;
+  --text-retro-label: 18px;
+  --text-retro-footer: 18px;
+  --text-retro-card-body: 20px;
+  --text-retro-nav: 22px;
+  --text-retro-body: 22px;
+  --text-retro-h1: 24px;
 
+  /* Keyframes */
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+  @keyframes crt-warp {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.002);
+      filter: brightness(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  @keyframes float-avatar {
+    0%,
+    100% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-8px) rotate(3deg);
+    }
+  }
+  @keyframes floatA {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes floatB {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-7px);
+    }
+  }
+
+  /* Animations */
+  --animate-blink: blink 1s step-end infinite;
+  --animate-crt-warp: crt-warp 6s ease-in-out infinite;
+  --animate-float-avatar: float-avatar 3.5s ease-in-out infinite;
+  --animate-float-a: floatA 3.4s ease-in-out infinite;
+  --animate-float-b: floatB 4.1s ease-in-out infinite;
+  --animate-float-a-slow: floatA 4.6s ease-in-out infinite;
+  --animate-float-b-fast: floatB 2.9s ease-in-out infinite;
+  --animate-float-a-mid: floatA 3.7s ease-in-out infinite;
+  --animate-float-b-mid: floatB 3.3s ease-in-out infinite;
+  --animate-spin-slow: spin 12s linear infinite;
+}
+
+:root {
   /* Starlight Variables */
   --sl-font: "IBM Plex Mono", ui-monospace, monospace;
   --sl-color-accent: #000;
