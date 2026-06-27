@@ -2,6 +2,7 @@
 import Layout from "../layouts/Layout.astro";
 import Button from "../components/Button.astro";
 import Visualization from "../components/Visualization.tsx";
+import PixelBullet from "../components/PixelBullet.astro";
 ---
 
 <Layout>
@@ -112,10 +113,19 @@ import Visualization from "../components/Visualization.tsx";
             <h2 class="font-press text-retro-card-title text-retro-green leading-[1.4]">
               SIMPLE CLI
             </h2>
-            <ul class="text-retro-card-body list-disc leading-[1.05] text-[#999] [&>li]:ms-4">
-              <li>get it up in 5 minutes and never have to worry about it</li>
-              <li>coordinated through any cloud database or server</li>
-              <li>view detailed weekly/daily reports with cost estimate metrics</li>
+            <ul class="text-retro-card-body flex flex-col gap-2 leading-[1.05] text-[#999]">
+              <li class="flex items-start gap-2">
+                <PixelBullet class="translate-y-2.5" />
+                <span>get it up in 5 minutes and never have to worry about it</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <PixelBullet class="translate-y-2.5" />
+                <span>coordinated through any cloud database or server</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <PixelBullet class="translate-y-2.5" />
+                <span>view detailed weekly/daily reports with cost estimate metrics</span>
+              </li>
             </ul>
           </article>
         </li>

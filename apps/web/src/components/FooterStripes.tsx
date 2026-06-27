@@ -19,7 +19,10 @@ export default function FooterStripes({
     // Only animate on first client mount, never on re-hydration
     if (!hasAnimated.current) {
       hasAnimated.current = true;
-      setReady(true);
+      const timer = setTimeout(() => {
+        setReady(true);
+      }, 600);
+      return () => clearTimeout(timer);
     }
   }, []);
 

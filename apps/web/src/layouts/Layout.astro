@@ -83,7 +83,9 @@ const canonicalURL = Astro.site
             htmlEl.style.position = "relative";
           }
 
-          const stripesCount = 1;
+          const isH1 = htmlEl.tagName.toLowerCase() === "h1";
+          const stripesCount = isH1 ? parseInt(htmlEl.getAttribute("data-stripes") || "4") : 1;
+
           const delay = parseFloat(htmlEl.getAttribute("data-delay") || "0.1");
           const direction = htmlEl.getAttribute("data-direction") || "alternate";
           const colorMode = htmlEl.getAttribute("data-color") || "bg";
@@ -115,14 +117,16 @@ const canonicalURL = Astro.site
               stripe.style.backgroundColor = defaultBg;
             }
 
-            const dir = htmlEl.getAttribute("data-direction") || "right";
-
-            if (dir === "down" || dir === "up") {
-              stripe.style.transformOrigin = dir === "down" ? "bottom" : "top";
+            if (direction === "down" || direction === "up") {
+              stripe.style.transformOrigin = direction === "down" ? "bottom" : "top";
               stripe.style.transform = "scaleY(1)";
             } else {
               let origin = "left";
-              if (dir === "right") origin = "right";
+              if (direction === "right") {
+                origin = "right";
+              } else if (direction === "alternate") {
+                origin = i % 2 === 0 ? "left" : "right";
+              }
               stripe.style.transformOrigin = origin;
               stripe.style.transform = "scaleX(1)";
             }
@@ -133,8 +137,7 @@ const canonicalURL = Astro.site
 
           htmlEl.appendChild(overlay);
 
-          const dir = htmlEl.getAttribute("data-direction") || "right";
-          const isVertical = dir === "down" || dir === "up";
+          const isVertical = direction === "down" || direction === "up";
 
           inView(
             htmlEl,

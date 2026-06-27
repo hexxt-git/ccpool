@@ -1,0 +1,14 @@
+---
+const { class: className = "", ...rest } = Astro.props;
+---
+
+<svg
+  width="6"
+  height="6"
+  viewBox="0 0 6 6"
+  fill="currentColor"
+  class={`shrink-0 ${className}`}
+  {...rest}
+>
+  <rect width="6" height="6"></rect>
+</svg>

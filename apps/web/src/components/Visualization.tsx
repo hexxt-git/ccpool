@@ -195,7 +195,7 @@ function ConnectionDots({
             animate={revealed && connected ? { opacity: 1 } : { opacity: 0 }}
             transition={
               revealed && connected
-                ? { delay: revealDelay + i * 0.025, duration: 0.1 }
+                ? { delay: revealDelay + (7 - i) * 0.025, duration: 0.1 }
                 : { duration: 0.05 }
             }
           />

@@ -1,0 +1,13 @@
+# ccshare
+
+> ccshare is a command-line tool for teams or households sharing a single Claude subscription, enabling fair token usage limits and coordinated access.
+
+ccshare helps resolve token usage conflicts when multiple people share a single Claude subscription. Claude enforces a 5-hour rolling window and a weekly window limit. Without coordination, one member can easily exhaust the quota for everyone else. ccshare provides visibility and fair-share scheduling to prevent this.
+
+## Documentation
+
+- [Introduction](/docs): Learn what ccshare is, how it works, and its design philosophy.
+- [Installation & Commands](/docs/installation): Comprehensive guide on installing ccshare and using CLI commands.
+- [Privacy Policy](/docs/legal/privacy): Privacy policy regarding data collection and storage.
+- [Terms of Service](/docs/legal/terms): Terms and conditions of using ccshare.
+- [DMCA Policy](/docs/legal/dmca): DMCA policy and contact information.

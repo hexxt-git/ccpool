@@ -6,14 +6,30 @@ description: What ccshare is and why it exists.
 
 ## What is ccshare?
 
-ccshare is a command-line tool for people sharing a single Claude subscription across a team or household.
+ccshare is a serverless command-line utility designed to help teams and households coordinate usage of a shared Claude subscription. By managing a shared ledger, it ensures equitable access across Claude's rolling 5-hour and weekly usage windows.
 
-Claude enforces usage limits on two windows:
+Claude enforces rate limits across two distinct periods:
 
-- **5-hour rolling window** — a short burst limit reset every 5 hours
-- **Weekly window** — a broader cap that resets each week
+- **5-hour rolling window** — a high-frequency token quota that refreshes dynamically
+- **Weekly window** — a long-term cap that resets weekly
 
-Without coordination, one person can exhaust the 5-hour window for everyone else. ccshare makes that visible and manageable.
+Without coordination, a single user's high-volume task can exhaust the entire team's quota. ccshare provides the tracking and pacing necessary to keep the subscription usable for everyone.
+
+## Key Features
+
+### Automatic Request Pacing
+
+Users prompt Claude as normal while ccshare handles the scheduling behind the scenes. It tracks and schedules requests dynamically to ensure no single member hogs the team's limits.
+
+### Active Quota Reallocation
+
+To prevent wasted capacity, ccshare monitors team activity. If a member remains inactive, their allocated tokens are automatically redistributed to active team members one hour before the current usage window resets.
+
+### Flexible CLI Integration
+
+- **Minimal Setup** — Install and initialize the CLI in under five minutes with zero ongoing maintenance.
+- **Serverless Synchronization** — Sync ledger states across the team using standard cloud storage folders (such as Dropbox, iCloud, or a shared Git repository) as well as cloud database backends.
+- **Consumption Analytics** — Review detailed daily and weekly usage reports, complete with estimated cost breakdown metrics.
 
 ## How it works
 

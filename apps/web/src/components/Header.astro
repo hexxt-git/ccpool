@@ -152,6 +152,44 @@ const {
   </div>
 </header>
 
+<div class="mx-auto w-full max-w-[1200px]">
+  <div
+    class="under-construction-bar border-b-3 flex w-full items-center justify-center border-[#1e1e1e] py-1 opacity-80"
+  >
+    <span
+      class="font-press bg-[#000] px-3 py-1 text-[8px] uppercase tracking-[2px] text-[var(--color-retro-yellow)]"
+    >
+      under construction
+    </span>
+  </div>
+</div>
+
+<style>
+  .under-construction-bar {
+    background: linear-gradient(
+      -45deg,
+      var(--color-retro-yellow) 25%,
+      #000 25%,
+      #000 50%,
+      var(--color-retro-yellow) 50%,
+      var(--color-retro-yellow) 75%,
+      #000 75%,
+      #000 100%
+    );
+    background-size: 28px 28px;
+    animation: construction-scroll 1s linear infinite;
+  }
+
+  @keyframes construction-scroll {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: 28px 0;
+    }
+  }
+</style>
+
 <script>
   let initialized = false;
 
