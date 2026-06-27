@@ -580,7 +580,7 @@ export default function Visualization() {
           {users.map((user, i) => {
             const isReconnect = reconnectedSet.has(user.id);
             const hasDragged = dragEndCountMap[user.id] > 0;
-            const baseDelay = isReconnect ? 0 : (i + 2) * 0.15 + 0.2;
+            const baseDelay = isReconnect ? 0 : (i + 2) * 0.15 + 0.1;
             return (
               <ConnectionDots
                 key={`${user.id}-${dragEndCountMap[user.id]}`}
@@ -609,7 +609,7 @@ export default function Visualization() {
           <motion.div
             initial={{ clipPath: "inset(0 100% 0 0)", opacity: 0 }}
             animate={revealed ? { clipPath: "inset(0 0% 0 0)", opacity: 1 } : {}}
-            transition={{ delay: 0.2, duration: 0.2, ease: "linear" }}
+            transition={{ delay: 0.1, duration: 0.2, ease: "linear" }}
           >
             <img
               src="/desktop.png"
@@ -639,7 +639,7 @@ export default function Visualization() {
                 }
                 transition={{
                   opacity: {
-                    delay: revealed && activeCount > 0 && isInitialRef.current ? 1 * 0.15 + 0.2 : 0,
+                    delay: revealed && activeCount > 0 && isInitialRef.current ? 1 * 0.15 + 0.1 : 0,
                     duration: 0.4,
                   },
                 }}
@@ -657,7 +657,7 @@ export default function Visualization() {
 
         {/* USERS */}
         {users.map((user, i) => {
-          const revealDelay = reconnectedSet.has(user.id) ? 0 : (i + 2) * 0.15 + 0.2;
+          const revealDelay = reconnectedSet.has(user.id) ? 0 : (i + 2) * 0.15 + 0.1;
           return (
             <ClawdUser
               key={user.id}

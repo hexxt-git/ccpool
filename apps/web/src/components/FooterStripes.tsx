@@ -21,7 +21,7 @@ export default function FooterStripes({
       hasAnimated.current = true;
       const timer = setTimeout(() => {
         setReady(true);
-      }, 600);
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, []);

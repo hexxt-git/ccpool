@@ -86,7 +86,7 @@ const canonicalURL = Astro.site
           const isH1 = htmlEl.tagName.toLowerCase() === "h1";
           const stripesCount = isH1 ? parseInt(htmlEl.getAttribute("data-stripes") || "4") : 1;
 
-          const delay = parseFloat(htmlEl.getAttribute("data-delay") || "0.1");
+          const delayAttr = htmlEl.getAttribute("data-delay") || "0.1";
           const direction = htmlEl.getAttribute("data-direction") || "alternate";
           const colorMode = htmlEl.getAttribute("data-color") || "bg";
 
@@ -142,6 +142,8 @@ const canonicalURL = Astro.site
           inView(
             htmlEl,
             () => {
+              const hasLoaded = performance.now() > 2000;
+              const delay = hasLoaded ? 0 : parseFloat(delayAttr);
               animate(stripes, isVertical ? { scaleY: 0 } : { scaleX: 0 }, {
                 delay: stagger(0.15, { startDelay: delay }),
                 duration: 0.46,
@@ -157,10 +159,12 @@ const canonicalURL = Astro.site
           inView(
             featureCards[0],
             () => {
+              const hasLoaded = performance.now() > 2000;
+              const cardDelay = hasLoaded ? 0 : 1.15;
               animate(
                 featureCards,
                 { clipPath: ["inset(0 0 100% 0)", "inset(0 0 0 0)"], opacity: [1, 1] },
-                { delay: stagger(0.15), duration: 0.4, ease: "linear" }
+                { delay: stagger(0.15, { startDelay: cardDelay }), duration: 0.4, ease: "linear" }
               );
             },
             { amount: 0.1 }
