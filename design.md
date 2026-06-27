@@ -4,7 +4,7 @@ Based on the provided mockup and subsequent developments, this document outlines
 
 ## 1. Overall Theme & Aesthetics
 
-- **Style:** Retro, 8-bit / pixel art, terminal/CLI arcade aesthetic.
+- **Style:** Retro, 8-bit / pixel art, terminal/CLI aesthetic.
 - **Vibe:** Nostalgic, technical, developer-focused, dynamic and alive.
 
 ## 2. Color Palette
@@ -30,7 +30,7 @@ Based on the provided mockup and subsequent developments, this document outlines
 
 ## 4. Animation Language & Choreography
 
-The website utilizes a bespoke animation system powered by Motion (formerly Framer Motion), designed to evoke CRT screens loading data, interlaced video, and retro arcade sequences.
+The website utilizes a bespoke animation system powered by Motion (formerly Framer Motion), designed to evoke CRT screens loading data, interlaced video, and retro gaming and terminal boot sequences.
 
 ### 4.1. "Retro Reveal" Striping Effect
 
@@ -85,6 +85,6 @@ A heavily choreographed, multi-stage loading sequence in the hero visualization:
 
 ## 6. UI Components & Elements
 
-- **Buttons:** Boxy, zero border-radius. They use hard drop-shadows (e.g., `4px 4px 0`) that reduce to `0px 0px 0` combined with translate transforms on `:active` to simulate a physical, clicky arcade machine button.
+- **Buttons:** Boxy, zero border-radius. They use hard drop-shadows (e.g., `4px 4px 0`) that reduce to `0px 0px 0` combined with translate transforms on `:active` to simulate a physical, clicky mechanical keyboard / arcade machine button.
 - **Icons:** Strictly crisp, shape-rendered pixel art (`shape-rendering="crispEdges"` in SVG).
 - **Borders:** Hard, solid lines. `border-radius: 0` is strictly enforced everywhere.
