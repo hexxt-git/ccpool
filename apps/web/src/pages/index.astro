@@ -1,7 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Button from "../components/Button.astro";
-import Visualization from "../components/Visualization.astro";
+import Visualization from "../components/Visualization.tsx";
 ---
 
 <Layout>
@@ -71,7 +71,7 @@ import Visualization from "../components/Visualization.astro";
       </div>
 
       <!-- VISUALIZATION -->
-      <Visualization />
+      <Visualization client:visible />
     </section>
 
     <!-- BOTTOM ROW: 3 FEATURE CARDS -->

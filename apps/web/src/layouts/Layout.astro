@@ -12,8 +12,8 @@ interface Props {
 }
 
 const {
-  title = "ccshare | Fair Subscription Sharing",
-  description = "claude code subscription sharing with fair usage limits for low budget teams",
+  title = "ccshare | a cli to equally share claude subscriptions",
+  description = "a cli to equally share claude subscriptions",
   url = "https://github.com/hexxt-git/ccshare",
   image = "/ccshare-large.webp",
 } = Astro.props;
@@ -68,11 +68,6 @@ const canonicalURL = Astro.site
       import { animate, inView, stagger } from "motion";
 
       const initReveals = () => {
-        // Hide all dots immediately via JS to avoid class conflicts
-        document.querySelectorAll("[class*='clawd-dot-']").forEach((dot) => {
-          (dot as HTMLElement).style.opacity = "0";
-        });
-
         const colors = [
           "var(--color-retro-stripe-1)",
           "var(--color-retro-stripe-2)",
@@ -153,74 +148,6 @@ const canonicalURL = Astro.site
             { amount: 0.1 }
           );
         });
-
-        const clawds = [
-          document.querySelector(".clawd-monitor"),
-          document.querySelector(".clawd-logo"),
-          document.querySelector(".clawd-1"),
-          document.querySelector(".clawd-3"),
-          document.querySelector(".clawd-5"),
-          document.querySelector(".clawd-2"),
-          document.querySelector(".clawd-4"),
-          document.querySelector(".clawd-6"),
-        ].filter(Boolean) as HTMLElement[];
-
-        if (clawds.length > 0) {
-          clawds.forEach((clawd, index) => {
-            inView(
-              clawd,
-              () => {
-                const baseDelay = index * 0.15 + 0.2;
-
-                if (clawd.classList.contains("clawd-logo")) {
-                  animate(
-                    clawd,
-                    { opacity: [0, 1, 0, 1] },
-                    {
-                      delay: baseDelay,
-                      duration: 0.15,
-                      ease: "linear",
-                    }
-                  );
-                } else {
-                  animate(
-                    clawd,
-                    { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"], opacity: [1, 1] },
-                    {
-                      delay: baseDelay,
-                      duration: 0.2,
-                      ease: "linear",
-                    }
-                  );
-                }
-
-                // Animate connection dots radiating outwards natively to guarantee execution
-                const match = clawd.className.match(/clawd-(\d)/);
-                if (match) {
-                  const id = match[1];
-                  const dots = document.querySelectorAll(`.clawd-dot-${id}`);
-                  if (dots.length > 0) {
-                    // Wait for the avatar sweep to finish + extra pause before drawing dots
-                    setTimeout(
-                      () => {
-                        dots.forEach((dot, i) => {
-                          setTimeout(
-                            () => {
-                              (dot as HTMLElement).style.opacity = "1";
-                            },
-                            (dots.length - 1 - i) * 25
-                          );
-                        });
-                      },
-                      (baseDelay + 0.65) * 1000
-                    );
-                  }
-                }
-              },
-              { amount: 0.1 }
-            );
-          });
-        }
 
         const featureCards = document.querySelectorAll(".feature-reveal");
         if (featureCards.length > 0) {

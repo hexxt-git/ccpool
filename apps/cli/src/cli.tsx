@@ -85,7 +85,7 @@ const program = new Command();
 
 program
   .name("ccshare")
-  .description("claude code subscription sharing with fair usage limits for teams")
+  .description("claude subscription sharing with fair usage limits for teams")
   .version("0.0.1");
 
 program
