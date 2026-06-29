@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { runStatus } from "./commands/status.js";
+import { runTui } from "./commands/tui.js";
 import { runInit } from "./commands/init.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runConfigGet, runConfigSet } from "./commands/config.js";
@@ -69,6 +70,14 @@ daemon
   .description("run the daemon loop in the foreground (used internally by start)")
   .action(async () => {
     await runDaemonForeground();
+  });
+
+program
+  .command("tui")
+  .aliases(["live"])
+  .description("live shared view of the account tank")
+  .action(async () => {
+    await runTui();
   });
 
 program
