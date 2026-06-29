@@ -81,6 +81,9 @@ importers:
       '@ccshare/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@ccshare/storage-libsql':
+        specifier: workspace:*
+        version: link:../../packages/storage-libsql
       commander:
         specifier: ^13.1.0
         version: 13.1.0
