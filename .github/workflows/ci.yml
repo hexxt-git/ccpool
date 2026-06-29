@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [master, cli]
+  pull_request:
+
+jobs:
+  # The whole suite runs twice — once on Node, once on Bun — to keep the code
+  # runtime-agnostic (§4 of the plan).
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [node, bun]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm type-check
+
+      - name: test (node)
+        if: matrix.runtime == 'node'
+        run: pnpm test
+
+      - name: test (bun)
+        if: matrix.runtime == 'bun'
+        run: pnpm test:bun
