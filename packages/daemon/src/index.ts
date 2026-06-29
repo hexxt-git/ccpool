@@ -1,4 +1,16 @@
 // @ccshare/daemon — the long-running observer process (no IPC).
-// Real implementation lands in Phase 3; this keeps the package buildable.
 
-export const DAEMON_VERSION = "0.0.1" as const;
+export { Daemon, startDaemon } from "./daemon.js";
+export type { DaemonDeps } from "./daemon.js";
+export { spawnDetached } from "./spawn.js";
+export type { SpawnDetachedOptions } from "./spawn.js";
+export {
+  daemonPaths,
+  isAlive,
+  readPid,
+  acquireLock,
+  releaseLock,
+  makeLogger,
+  AlreadyRunningError,
+} from "./lifecycle.js";
+export type { DaemonPaths, Logger, LogLevel } from "./lifecycle.js";
