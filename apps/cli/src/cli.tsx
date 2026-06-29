@@ -4,6 +4,13 @@ import { runStatus } from "./commands/status.js";
 import { runInit } from "./commands/init.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runConfigGet, runConfigSet } from "./commands/config.js";
+import {
+  runDaemonForeground,
+  runDaemonRestart,
+  runDaemonStart,
+  runDaemonStatus,
+  runDaemonStop,
+} from "./commands/daemon.js";
 
 const program = new Command();
 
@@ -30,6 +37,38 @@ program
   .description("re-run inspection + identity checks; change nothing")
   .action(async () => {
     await runDoctor();
+  });
+
+const daemon = program.command("daemon").description("the background observer process");
+daemon
+  .command("start")
+  .description("start the daemon detached")
+  .action(async () => {
+    await runDaemonStart();
+  });
+daemon
+  .command("stop")
+  .description("stop the running daemon")
+  .action(async () => {
+    await runDaemonStop();
+  });
+daemon
+  .command("status")
+  .description("show whether the daemon is running and how fresh its state is")
+  .action(async () => {
+    await runDaemonStatus();
+  });
+daemon
+  .command("restart")
+  .description("stop then start the daemon")
+  .action(async () => {
+    await runDaemonRestart();
+  });
+daemon
+  .command("run", { hidden: true })
+  .description("run the daemon loop in the foreground (used internally by start)")
+  .action(async () => {
+    await runDaemonForeground();
   });
 
 program

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ccshare/core": "workspace:*",
+    "@ccshare/daemon": "workspace:*",
     "@ccshare/storage-libsql": "workspace:*",
     "commander": "^13.1.0",
     "ink": "^5.1.0",

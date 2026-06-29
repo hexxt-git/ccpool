@@ -17,3 +17,8 @@ export type { AccountIdentity } from "./identity/resolver.js";
 // usage
 export { pollUsage, parseUsage, UsageAuthError, USAGE_URL, OAUTH_BETA } from "./usage/poller.js";
 export type { PollOptions } from "./usage/poller.js";
+export { detectResets } from "./usage/resets.js";
+
+// state
+export { buildLocalState, atomicWriteJson } from "./state/snapshot.js";
+export type { SnapshotInput } from "./state/snapshot.js";

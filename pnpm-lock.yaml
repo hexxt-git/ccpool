@@ -81,6 +81,9 @@ importers:
       '@ccshare/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@ccshare/daemon':
+        specifier: workspace:*
+        version: link:../../packages/daemon
       '@ccshare/storage-libsql':
         specifier: workspace:*
         version: link:../../packages/storage-libsql
