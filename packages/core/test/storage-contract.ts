@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { Storage } from "../src/index.js";
-import { UNKNOWN_USER } from "../src/index.js";
 
 /**
  * Shared Storage contract. Run against every adapter (memory, libsql, postgres)
@@ -91,29 +90,28 @@ export function runStorageContract(h: ContractHarness): void {
       };
       await s.recordMessageUsage([row]);
       await s.recordMessageUsage([{ ...row, inputTokens: 999 }]); // same uuid -> ignored
-      const shares = await s.getShareSince("2026-06-29T00:00:00.000Z");
-      // only sam has weight, so with no tank sample everything is 0 / unknown=0
-      expect(shares.length).toBeGreaterThan(0);
+      const msgs = await s.getMessageUsageSince("2026-06-29T00:00:00.000Z");
+      expect(msgs).toHaveLength(1);
+      expect(msgs[0]?.inputTokens).toBe(1);
     });
 
-    it("apportions shares to the tank, summing per cap", async () => {
+    it("returns the sample trajectory since a cutoff, ascending", async () => {
       const s = await open(h.fresh());
       await s.initializeSchema();
-      await s.recordUsageSample({
-        cap: "five_hour",
-        pct: 60,
-        resetsAt: null,
-        capturedAt: "2026-06-29T11:00:00.000Z",
-      });
-      await s.recordMessageUsage([mkMsg("a", "sam", 30), mkMsg("b", "alex", 10)]);
-      const shares = (await s.getShareSince("2026-06-29T00:00:00.000Z")).filter(
-        (x) => x.cap === "five_hour"
-      );
-      const total = shares.reduce((acc, x) => acc + x.pct, 0);
-      expect(total).toBeCloseTo(60, 5);
-      expect(shares.find((x) => x.user === "sam")?.pct).toBeCloseTo(45, 5);
-      expect(shares.find((x) => x.user === "alex")?.pct).toBeCloseTo(15, 5);
-      expect(shares.find((x) => x.user === UNKNOWN_USER)?.pct).toBeCloseTo(0, 5);
+      await s.recordUsageSample(mkSample("five_hour", 10, "2026-06-29T10:00:00.000Z"));
+      await s.recordUsageSample(mkSample("five_hour", 30, "2026-06-29T11:00:00.000Z"));
+      await s.recordUsageSample(mkSample("five_hour", 5, "2026-06-29T08:00:00.000Z"));
+      const traj = await s.getUsageSamplesSince("2026-06-29T09:00:00.000Z");
+      expect(traj.map((x) => x.pct)).toEqual([10, 30]); // 08:00 excluded, ascending
+    });
+
+    it("returns measured messages since a cutoff", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      await s.recordMessageUsage([mkMsg("a", "sam", 30, "2026-06-29T12:00:00.000Z")]);
+      await s.recordMessageUsage([mkMsg("b", "alex", 10, "2026-06-28T12:00:00.000Z")]);
+      const msgs = await s.getMessageUsageSince("2026-06-29T00:00:00.000Z");
+      expect(msgs.map((m) => m.uuid).sort()).toEqual(["a"]);
     });
 
     it("sets and reads budgets, upserting on conflict", async () => {
@@ -127,15 +125,23 @@ export function runStorageContract(h: ContractHarness): void {
   });
 }
 
-function mkMsg(uuid: string, user: string, tokens: number) {
+function mkMsg(uuid: string, user: string, tokens: number, timestamp = "2026-06-29T12:00:00.000Z") {
   return {
     uuid,
     user,
-    timestamp: "2026-06-29T12:00:00.000Z",
+    timestamp,
     model: null,
     inputTokens: tokens,
     outputTokens: 0,
     cacheCreationTokens: 0,
     cacheReadTokens: 0,
   };
+}
+
+function mkSample(
+  cap: "five_hour" | "seven_day" | "seven_day_opus",
+  pct: number,
+  capturedAt: string
+) {
+  return { cap, pct, resetsAt: null, capturedAt };
 }

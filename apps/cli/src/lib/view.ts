@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
+  attributeShares,
+  CAP_WINDOW_MS,
   isTokenExpired,
   pollUsage,
   readCredentials,
@@ -60,8 +62,18 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
   let budgets: Budget[] = [];
   let stale = false;
   try {
-    [dbSamples, budgets] = await Promise.all([storage.getLatestSamples(), storage.getBudgets()]);
-    shares = await sharesForWindow(storage);
+    const now = Date.now();
+    // pull enough history to cover the widest window, then attribute deltas
+    const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
+    const [latest, samplesSince, messagesSince, b] = await Promise.all([
+      storage.getLatestSamples(),
+      storage.getUsageSamplesSince(since),
+      storage.getMessageUsageSince(since),
+      storage.getBudgets(),
+    ]);
+    dbSamples = latest;
+    budgets = b;
+    shares = attributeShares(samplesSince, messagesSince, now);
   } catch {
     stale = true;
   }
@@ -93,25 +105,6 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     tokenExpired: state?.account.tokenExpired ?? false,
     updatedAt: state?.updatedAt ?? null,
   };
-}
-
-const HOUR = 60 * 60 * 1000;
-
-/**
- * Per-user shares, windowed per cap: the 5-hour column only counts the last 5h of
- * activity, the weekly columns the last 7 days. Each query apportions across the
- * matching tank percentage, so every column still totals its window's tank.
- */
-async function sharesForWindow(storage: Storage): Promise<UserShare[]> {
-  const now = Date.now();
-  const [fiveHour, weekly] = await Promise.all([
-    storage.getShareSince(new Date(now - 5 * HOUR).toISOString()),
-    storage.getShareSince(new Date(now - 7 * 24 * HOUR).toISOString()),
-  ]);
-  return [
-    ...fiveHour.filter((r) => r.cap === "five_hour"),
-    ...weekly.filter((r) => r.cap !== "five_hour"),
-  ];
 }
 
 async function tryLivePoll(configDir: string): Promise<UsageSample[] | null> {

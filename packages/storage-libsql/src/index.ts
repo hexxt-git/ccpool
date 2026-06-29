@@ -2,7 +2,6 @@ import { createClient, type Client, type InValue } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  apportionShares,
   CAP_KINDS,
   SCHEMA_VERSION,
   UNKNOWN_USER,
@@ -14,10 +13,8 @@ import {
   type Storage,
   type UsageSample,
   type User,
-  type UserShare,
 } from "@ccshare/core";
 import { randomUUID } from "node:crypto";
-import type { RawWeight } from "@ccshare/core";
 
 export const DRIVER = "libsql" as const;
 
@@ -153,6 +150,20 @@ export class LibsqlStorage implements Storage {
     return CAP_KINDS.map((c) => byCap.get(c)).filter((s): s is UsageSample => !!s);
   }
 
+  async getUsageSamplesSince(since: string): Promise<UsageSample[]> {
+    const { rows } = await this.client.execute({
+      sql: `SELECT cap, pct, resetsAt, capturedAt FROM usage_samples
+            WHERE capturedAt >= ? ORDER BY capturedAt ASC`,
+      args: [since],
+    });
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      pct: Number(r.pct),
+      resetsAt: r.resetsAt == null ? null : String(r.resetsAt),
+      capturedAt: String(r.capturedAt),
+    }));
+  }
+
   async recordReset(e: ResetEvent): Promise<void> {
     await this.client.execute({
       sql: `INSERT INTO reset_events (cap, at, previousPct) VALUES (?, ?, ?)`,
@@ -183,20 +194,23 @@ export class LibsqlStorage implements Storage {
     );
   }
 
-  async getShareSince(since: string): Promise<UserShare[]> {
+  async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
     const { rows } = await this.client.execute({
-      sql: `SELECT user,
-                   SUM(inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens) AS weight
-            FROM message_usage WHERE timestamp >= ? GROUP BY user`,
+      sql: `SELECT uuid, user, timestamp, model, inputTokens, outputTokens,
+                   cacheCreationTokens, cacheReadTokens
+            FROM message_usage WHERE timestamp >= ?`,
       args: [since],
     });
-    const weights: RawWeight[] = [];
-    for (const cap of CAP_KINDS) {
-      for (const r of rows) {
-        weights.push({ user: String(r.user), cap, weight: Number(r.weight) });
-      }
-    }
-    return apportionShares(await this.getLatestSamples(), weights);
+    return rows.map((r) => ({
+      uuid: String(r.uuid),
+      user: String(r.user),
+      timestamp: String(r.timestamp),
+      model: r.model == null ? null : String(r.model),
+      inputTokens: Number(r.inputTokens),
+      outputTokens: Number(r.outputTokens),
+      cacheCreationTokens: Number(r.cacheCreationTokens),
+      cacheReadTokens: Number(r.cacheReadTokens),
+    }));
   }
 
   async setBudget(name: string, cap: CapKind, sharePct: number): Promise<void> {

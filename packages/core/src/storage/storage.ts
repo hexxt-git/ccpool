@@ -6,7 +6,6 @@ import type {
   ResetEvent,
   User,
   UsageSample,
-  UserShare,
 } from "../types.js";
 
 /** The current schema version this CLI understands. */
@@ -31,11 +30,14 @@ export interface Storage {
   // shared tank (account-scoped truth)
   recordUsageSample(s: UsageSample): Promise<void>;
   getLatestSamples(): Promise<UsageSample[]>;
+  /** The tank trajectory since `since` (all caps, ascending) — drives attribution. */
+  getUsageSamplesSince(since: string): Promise<UsageSample[]>;
   recordReset(e: ResetEvent): Promise<void>;
 
   // per-person attribution (Code surface; batch + idempotent on uuid)
   recordMessageUsage(rows: MessageUsage[]): Promise<void>;
-  getShareSince(since: string): Promise<UserShare[]>; // per name, incl. "unknown"
+  /** Raw measured Code activity since `since`, for time-correlated attribution. */
+  getMessageUsageSince(since: string): Promise<MessageUsage[]>;
 
   // optional budgets, keyed by name
   setBudget(name: string, cap: CapKind, sharePct: number): Promise<void>;

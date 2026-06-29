@@ -1,7 +1,6 @@
 import postgres, { type Sql } from "postgres";
 import { randomUUID } from "node:crypto";
 import {
-  apportionShares,
   CAP_KINDS,
   SCHEMA_VERSION,
   UNKNOWN_USER,
@@ -9,12 +8,10 @@ import {
   type CapKind,
   type DbInspection,
   type MessageUsage,
-  type RawWeight,
   type ResetEvent,
   type Storage,
   type UsageSample,
   type User,
-  type UserShare,
 } from "@ccshare/core";
 
 export const DRIVER = "postgres" as const;
@@ -118,6 +115,19 @@ export class PostgresStorage implements Storage {
     return CAP_KINDS.map((c) => byCap.get(c)).filter((s): s is UsageSample => !!s);
   }
 
+  async getUsageSamplesSince(since: string): Promise<UsageSample[]> {
+    const rows = await this.sql<
+      { cap: string; pct: number; resetsAt: string | null; capturedAt: string }[]
+    >`SELECT cap, pct, "resetsAt", "capturedAt" FROM usage_samples
+      WHERE "capturedAt" >= ${since} ORDER BY "capturedAt" ASC`;
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      pct: Number(r.pct),
+      resetsAt: r.resetsAt,
+      capturedAt: r.capturedAt,
+    }));
+  }
+
   async recordReset(e: ResetEvent): Promise<void> {
     await this.sql`INSERT INTO reset_events (cap, at, "previousPct")
       VALUES (${e.cap}, ${e.at}, ${e.previousPct})`;
@@ -137,16 +147,31 @@ export class PostgresStorage implements Storage {
     });
   }
 
-  async getShareSince(since: string): Promise<UserShare[]> {
-    const rows = await this.sql<{ user: string; weight: string }[]>`
-      SELECT "user",
-        SUM("inputTokens" + "outputTokens" + "cacheCreationTokens" + "cacheReadTokens") AS weight
-      FROM message_usage WHERE timestamp >= ${since} GROUP BY "user"`;
-    const weights: RawWeight[] = [];
-    for (const cap of CAP_KINDS) {
-      for (const r of rows) weights.push({ user: r.user, cap, weight: Number(r.weight) });
-    }
-    return apportionShares(await this.getLatestSamples(), weights);
+  async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
+    const rows = await this.sql<
+      {
+        uuid: string;
+        user: string;
+        timestamp: string;
+        model: string | null;
+        inputTokens: string;
+        outputTokens: string;
+        cacheCreationTokens: string;
+        cacheReadTokens: string;
+      }[]
+    >`SELECT uuid, "user", timestamp, model, "inputTokens", "outputTokens",
+             "cacheCreationTokens", "cacheReadTokens"
+      FROM message_usage WHERE timestamp >= ${since}`;
+    return rows.map((r) => ({
+      uuid: r.uuid,
+      user: r.user,
+      timestamp: r.timestamp,
+      model: r.model,
+      inputTokens: Number(r.inputTokens),
+      outputTokens: Number(r.outputTokens),
+      cacheCreationTokens: Number(r.cacheCreationTokens),
+      cacheReadTokens: Number(r.cacheReadTokens),
+    }));
   }
 
   async setBudget(name: string, cap: CapKind, sharePct: number): Promise<void> {

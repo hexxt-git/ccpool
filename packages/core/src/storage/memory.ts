@@ -6,10 +6,8 @@ import type {
   ResetEvent,
   User,
   UsageSample,
-  UserShare,
 } from "../types.js";
 import { CAP_KINDS, UNKNOWN_USER } from "../types.js";
-import { apportionShares } from "../state/shares.js";
 import type { Storage } from "./storage.js";
 import { SCHEMA_VERSION } from "./storage.js";
 
@@ -74,6 +72,12 @@ export class MemoryStorage implements Storage {
     return CAP_KINDS.map((c) => latest.get(c)).filter((s): s is UsageSample => !!s);
   }
 
+  async getUsageSamplesSince(since: string): Promise<UsageSample[]> {
+    return this.samples
+      .filter((s) => s.capturedAt >= since)
+      .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+  }
+
   async recordReset(e: ResetEvent): Promise<void> {
     this.resets.push(e);
   }
@@ -85,22 +89,8 @@ export class MemoryStorage implements Storage {
     }
   }
 
-  async getShareSince(since: string): Promise<UserShare[]> {
-    // Raw measured weight per (user, cap). A message contributes to every cap
-    // whose window it falls within; opus-only caps additionally filter by model.
-    const weights: { user: string; cap: CapKind; weight: number }[] = [];
-    const perUser = new Map<string, number>();
-    for (const m of this.messages.values()) {
-      if (m.timestamp < since) continue;
-      const w = messageWeight(m);
-      perUser.set(m.user, (perUser.get(m.user) ?? 0) + w);
-    }
-    for (const cap of CAP_KINDS) {
-      for (const [user, weight] of perUser) {
-        weights.push({ user, cap, weight });
-      }
-    }
-    return apportionShares(await this.getLatestSamples(), weights);
+  async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
+    return [...this.messages.values()].filter((m) => m.timestamp >= since);
   }
 
   async setBudget(name: string, cap: CapKind, sharePct: number): Promise<void> {
@@ -110,11 +100,6 @@ export class MemoryStorage implements Storage {
   async getBudgets(): Promise<Budget[]> {
     return [...this.budgets.values()];
   }
-}
-
-/** Cache fields are reliable; raw input/output undercount — sum them all. */
-function messageWeight(m: MessageUsage): number {
-  return m.inputTokens + m.outputTokens + m.cacheCreationTokens + m.cacheReadTokens;
 }
 
 export { UNKNOWN_USER };
