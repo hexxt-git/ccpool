@@ -1,4 +1,14 @@
-import { CAP_KINDS, CAP_LABEL, bar, countdown, pctLabel, type UsageSample } from "@ccshare/core";
+import {
+  CAP_KINDS,
+  CAP_LABEL,
+  UNKNOWN_USER,
+  bar,
+  countdown,
+  pctLabel,
+  type CapKind,
+  type UsageSample,
+  type UserShare,
+} from "@ccshare/core";
 import type { ViewModel } from "./view.js";
 
 /**
@@ -34,11 +44,51 @@ export function formatAge(updatedAt: string | null, now: number = Date.now()): s
 }
 
 /**
- * The full view shared by `status` and `tui`: the tank header plus edge-state
- * notes (per-user rows are added in Phase 5). One renderer, two surfaces.
+ * The per-user table: each participant's slice of the tank for each window. Rows
+ * sum to the header percentage per column. `unknown` is always listed (it absorbs
+ * unattributed activity). Shares are estimates from relative Code activity (§10).
+ */
+export function renderUserTable(shares: UserShare[], samples: UsageSample[]): string[] {
+  const caps = CAP_KINDS.filter((c) => samples.some((s) => s.cap === c));
+  if (caps.length === 0 || shares.length === 0) return [];
+
+  const byUserCap = new Map<string, number>();
+  const users = new Set<string>();
+  for (const sh of shares) {
+    users.add(sh.user);
+    byUserCap.set(`${sh.user}:${sh.cap}`, sh.pct);
+  }
+
+  const nameWidth = Math.max(4, ...[...users].map((u) => u.length));
+  const colWidth = 8;
+  const head = (cap: CapKind) => CAP_LABEL[cap].padStart(colWidth);
+  const cell = (u: string, c: CapKind) =>
+    pctLabel(byUserCap.get(`${u}:${c}`) ?? 0).padStart(colWidth);
+
+  // sort by 5h (or first cap) share desc; unknown always last
+  const sortCap = caps[0]!;
+  const ordered = [...users].sort((a, b) => {
+    if (a === UNKNOWN_USER) return 1;
+    if (b === UNKNOWN_USER) return -1;
+    return (byUserCap.get(`${b}:${sortCap}`) ?? 0) - (byUserCap.get(`${a}:${sortCap}`) ?? 0);
+  });
+
+  const lines: string[] = [""];
+  lines.push("user".padEnd(nameWidth) + caps.map(head).join(""));
+  lines.push("-".repeat(nameWidth) + caps.map(() => " ".repeat(colWidth - 6) + "------").join(""));
+  for (const u of ordered) {
+    lines.push(u.padEnd(nameWidth) + caps.map((c) => cell(u, c)).join(""));
+  }
+  return lines;
+}
+
+/**
+ * The full view shared by `status` and `tui`: the tank header, the per-user
+ * table, then edge-state notes. One renderer, two surfaces.
  */
 export function renderView(vm: ViewModel, now: number = Date.now()): string[] {
   const lines = renderTank(vm.samples, now);
+  lines.push(...renderUserTable(vm.shares, vm.samples));
 
   const notes: string[] = [];
   if (vm.tokenExpired) notes.push("waiting for Claude Code to refresh auth");

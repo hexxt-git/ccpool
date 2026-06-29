@@ -22,3 +22,6 @@ export { detectResets } from "./usage/resets.js";
 // state
 export { buildLocalState, atomicWriteJson } from "./state/snapshot.js";
 export type { SnapshotInput } from "./state/snapshot.js";
+
+// jsonl
+export { JsonlReader, parseLine } from "./jsonl/reader.js";

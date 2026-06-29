@@ -5,6 +5,8 @@ import { runTui } from "./commands/tui.js";
 import { runInit } from "./commands/init.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runConfigGet, runConfigSet } from "./commands/config.js";
+import { runStatusline } from "./commands/statusline.js";
+import { runUsers } from "./commands/users.js";
 import {
   runDaemonForeground,
   runDaemonRestart,
@@ -85,6 +87,20 @@ program
   .description("one-shot snapshot of the shared account tank")
   .action(async () => {
     await runStatus();
+  });
+
+program
+  .command("statusline")
+  .description("compact one-line status for Claude Code's status bar (reads state.json)")
+  .action(async () => {
+    await runStatusline();
+  });
+
+program
+  .command("users")
+  .description("list participants (names) in the shared database")
+  .action(async () => {
+    await runUsers();
   });
 
 const config = program.command("config").description("read or change local config");

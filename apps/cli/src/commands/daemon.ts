@@ -31,6 +31,8 @@ export async function runDaemonForeground(): Promise<void> {
     name: cfg.name,
     pollIntervalMs: cfg.pollIntervalMs,
     logLevel: cfg.logLevel,
+    // re-read the name each tick so `config set name` hand-offs apply live
+    resolveName: async () => (await loadConfig())?.name ?? cfg.name,
   });
 }
 

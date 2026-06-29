@@ -3,7 +3,9 @@ import {
   buildLocalState,
   detectResets,
   isTokenExpired,
+  JsonlReader,
   pollUsage,
+  projectsDir,
   readCredentials,
   resolveAccount,
   UsageAuthError,
@@ -29,6 +31,8 @@ export interface DaemonDeps {
   pollIntervalMs: number;
   logLevel?: LogLevel;
   logger?: Logger;
+  /** Resolve the active name fresh each tick so hand-offs apply without restart. */
+  resolveName?: () => Promise<string> | string;
   // injectable seams for tests
   now?: () => number;
   fetchImpl?: typeof fetch;
@@ -50,18 +54,28 @@ export class Daemon {
   private wake: (() => void) | null = null;
   private failures = 0;
   private readonly log: Logger;
+  private readonly reader: JsonlReader;
 
   constructor(private readonly deps: DaemonDeps) {
     this.log = deps.logger ?? makeLogger(deps.logLevel ?? "info");
     this.startedAt = new Date(this.nowMs()).toISOString();
+    this.reader = new JsonlReader(projectsDir(deps.configDir));
+  }
+
+  private async currentName(): Promise<string> {
+    return (await this.deps.resolveName?.()) ?? this.deps.name;
   }
 
   private nowMs(): number {
     return this.deps.now?.() ?? Date.now();
   }
 
-  /** One observation cycle. Throws only on unexpected (network) errors. */
-  async tick(): Promise<void> {
+  /**
+   * One observation cycle. Poll, JSONL ingest, and the state.json write are
+   * independent: a poll failure never blocks attribution, and state is always
+   * refreshed. Returns whether the poll failed so {@link run} can back off.
+   */
+  async tick(): Promise<{ pollFailed: boolean }> {
     const { storage, configDir, paths } = this.deps;
     const nowIso = new Date(this.nowMs()).toISOString();
 
@@ -69,6 +83,7 @@ export class Daemon {
     const creds = await readCredentials(configDir);
 
     let tokenExpired = false;
+    let pollFailed = false;
     let samples = this.prev;
 
     if (!creds || isTokenExpired(creds, this.nowMs())) {
@@ -92,14 +107,27 @@ export class Daemon {
         this.prev = fresh;
       } catch (err) {
         if (err instanceof UsageAuthError) {
-          // 401 despite a non-expired token (e.g. clock skew). Treat like expiry,
-          // still write state; don't back off.
+          // 401 despite a non-expired token (e.g. clock skew). Treat like expiry.
           tokenExpired = true;
           this.log.debug("poll returned 401 — treating as expired");
         } else {
-          throw err; // network error -> caller backs off
+          // Network error: note it for backoff, but carry on with ingest + state.
+          pollFailed = true;
+          this.log.warn(`usage poll failed: ${(err as Error).message}`);
         }
       }
+    }
+
+    // Attribute new Claude Code activity to the active name (or unknown). Only
+    // lines appended since the daemon came up; the reader baselines at EOF.
+    try {
+      const rows = await this.reader.collectNew(await this.currentName());
+      if (rows.length > 0) {
+        await storage.recordMessageUsage(rows);
+        this.log.debug(`ingested ${rows.length} message(s)`);
+      }
+    } catch (err) {
+      this.log.warn(`jsonl ingest failed: ${(err as Error).message}`);
     }
 
     await atomicWriteJson(
@@ -113,24 +141,28 @@ export class Daemon {
         now: nowIso,
       })
     );
+
+    return { pollFailed };
   }
 
-  /** Run until {@link stop}. Backs off exponentially on network failures. */
+  /** Run until {@link stop}. Backs off exponentially on poll failures. */
   async run(): Promise<void> {
     this.log.info(`daemon up (pid ${process.pid}, name ${this.deps.name})`);
     while (!this.stopped) {
       let delay = this.deps.pollIntervalMs;
       try {
-        await this.tick();
-        this.failures = 0;
-      } catch (err) {
-        if (err instanceof UsageAuthError) {
-          this.failures = 0; // expected; next tick will skip cleanly
-        } else {
+        const { pollFailed } = await this.tick();
+        if (pollFailed) {
           this.failures++;
           delay = Math.min(MAX_BACKOFF_MS, this.deps.pollIntervalMs * 2 ** this.failures);
-          this.log.warn(`tick failed (${(err as Error).message}); backing off ${delay}ms`);
+        } else {
+          this.failures = 0;
         }
+      } catch (err) {
+        // Unexpected (non-poll) error — back off and keep running.
+        this.failures++;
+        delay = Math.min(MAX_BACKOFF_MS, this.deps.pollIntervalMs * 2 ** this.failures);
+        this.log.warn(`tick failed (${(err as Error).message}); backing off ${delay}ms`);
       }
       if (this.stopped) break;
       await this.sleep(jitter(delay));
