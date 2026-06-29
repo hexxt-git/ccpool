@@ -39,4 +39,16 @@ describe("renderUserTable", () => {
     expect(renderUserTable([], [])).toEqual([]);
     expect(renderUserTable([share("sam", "five_hour", 10)], [])).toEqual([]);
   });
+
+  it("marks a user over their budget with ▲, within with ·", () => {
+    const lines = renderUserTable(
+      [share("sam", "five_hour", 45), share("alex", "five_hour", 15)],
+      [sample("five_hour", 60)],
+      [{ name: "sam", cap: "five_hour", sharePct: 33 }]
+    );
+    const samRow = lines.find((l) => l.startsWith("sam"))!;
+    const alexRow = lines.find((l) => l.startsWith("alex"))!;
+    expect(samRow).toContain("▲"); // 45% over 33%
+    expect(alexRow).not.toContain("▲"); // no budget set
+  });
 });

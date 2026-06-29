@@ -1,5 +1,6 @@
 import { MemoryStorage, type Config, type Storage } from "@ccshare/core";
 import { LibsqlStorage } from "@ccshare/storage-libsql";
+import { PostgresStorage } from "@ccshare/storage-postgres";
 
 /**
  * The only place a driver name is turned into an adapter. Adding a backend means
@@ -13,7 +14,7 @@ export function makeStorage(cfg: Config): Storage {
     case "memory":
       return new MemoryStorage();
     case "postgres":
-      throw new Error("postgres adapter is not wired up yet (Phase 6)");
+      return new PostgresStorage(cfg.storage.url);
     default:
       throw new Error(`unknown storage driver: ${cfg.storage.driver as string}`);
   }

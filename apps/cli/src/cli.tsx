@@ -7,6 +7,7 @@ import { runDoctor } from "./commands/doctor.js";
 import { runConfigGet, runConfigSet } from "./commands/config.js";
 import { runStatusline } from "./commands/statusline.js";
 import { runUsers } from "./commands/users.js";
+import { runBudgetList, runBudgetSet } from "./commands/budget.js";
 import {
   runDaemonForeground,
   runDaemonRestart,
@@ -101,6 +102,20 @@ program
   .description("list participants (names) in the shared database")
   .action(async () => {
     await runUsers();
+  });
+
+const budget = program.command("budget").description("optional fair-share targets");
+budget
+  .command("set <name> <cap> <pct>")
+  .description("set a name's target share of a window, e.g. `budget set sam weekly 33`")
+  .action(async (name: string, cap: string, pct: string) => {
+    await runBudgetSet(name, cap, pct);
+  });
+budget
+  .command("list")
+  .description("list configured budgets")
+  .action(async () => {
+    await runBudgetList();
   });
 
 const config = program.command("config").description("read or change local config");

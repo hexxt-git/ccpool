@@ -87,6 +87,9 @@ importers:
       '@ccshare/storage-libsql':
         specifier: workspace:*
         version: link:../../packages/storage-libsql
+      '@ccshare/storage-postgres':
+        specifier: workspace:*
+        version: link:../../packages/storage-postgres
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -183,6 +186,22 @@ importers:
       '@libsql/client':
         specifier: ^0.14.0
         version: 0.14.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/storage-postgres:
+    dependencies:
+      '@ccshare/core':
+        specifier: workspace:*
+        version: link:../core
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.9
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -2574,7 +2593,6 @@ packages:
 
   libsql@0.4.7:
     resolution: {integrity: sha512-T9eIRCs6b0J1SHKYIvD8+KCJMcWZ900iZyxdnSCdqxN12Z1ijzT+jY5nrk72Jw4B0HGzms2NgpryArlJqvc3Lw==}
-    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   lightningcss-android-arm64@1.32.0:
@@ -3076,6 +3094,10 @@ packages:
   postcss@8.5.15:
     resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
     engines: {node: ^10 || ^12 || >=14}
+
+  postgres@3.4.9:
+    resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
+    engines: {node: '>=12'}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -7144,6 +7166,8 @@ snapshots:
       nanoid: 3.3.15
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postgres@3.4.9: {}
 
   prelude-ls@1.2.1: {}
 
