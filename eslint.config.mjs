@@ -26,6 +26,10 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      // TypeScript already checks for undefined references, and it understands
+      // Node/Web globals (fetch, Response, Buffer, …) and type-only names that
+      // the core `no-undef` rule does not. Disable it for TS files as recommended.
+      "no-undef": "off",
     },
   },
   {
