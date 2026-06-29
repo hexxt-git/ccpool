@@ -1,45 +1,20 @@
-import {
-  isTokenExpired,
-  pollUsage,
-  readCredentials,
-  resolveAccount,
-  resolveConfigDir,
-} from "@ccshare/core";
-import { renderTank } from "../lib/render.js";
+import { requireInit } from "../lib/guard.js";
+import { gatherView } from "../lib/view.js";
+import { renderView } from "../lib/render.js";
 
 /**
- * One-shot snapshot of the shared account tank. Phase 1 reads straight from the
- * live endpoint; Phase 4 will prefer the daemon's `state.json` and add the
- * per-user breakdown from the shared DB.
+ * One-shot snapshot of the shared account tank, rendered from the same view
+ * model `tui` uses. Prefers the shared DB, then local state.json, then a live
+ * poll (§10).
  */
 export async function runStatus(): Promise<void> {
-  const configDir = resolveConfigDir();
-  const account = await resolveAccount(configDir);
-  const creds = await readCredentials(configDir);
-
-  if (!creds) {
-    console.error("No Claude credentials found. Sign in with Claude Code first, then retry.");
-    process.exitCode = 1;
-    return;
-  }
-
-  const who = account?.email ?? account?.displayName ?? account?.id ?? "unknown account";
-  const plan = creds.subscriptionType ? ` (${creds.subscriptionType})` : "";
-  console.log(`ccshare · account ${who}${plan}\n`);
-
-  if (isTokenExpired(creds)) {
-    console.log("Access token expired — waiting for Claude Code to refresh auth.");
-    return;
-  }
-
-  let samples;
+  const ctx = await requireInit();
+  if (!ctx) return;
+  const { cfg, storage } = ctx;
   try {
-    samples = await pollUsage(creds.accessToken);
-  } catch (err) {
-    console.error(`Failed to read usage: ${(err as Error).message}`);
-    process.exitCode = 1;
-    return;
+    const vm = await gatherView(cfg, storage);
+    for (const line of renderView(vm)) console.log(line);
+  } finally {
+    await storage.close();
   }
-
-  for (const line of renderTank(samples)) console.log(line);
 }
