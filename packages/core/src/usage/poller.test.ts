@@ -36,6 +36,26 @@ describe("parseUsage", () => {
     expect(parseUsage(undefined)).toEqual([]);
     expect(parseUsage({})).toEqual([]);
   });
+
+  it("skips a cap whose utilization is non-finite (NaN/Infinity)", () => {
+    // typeof NaN === "number", so a bare typeof guard would let these through and
+    // poison reset detection + attribution. They must be dropped, not rendered.
+    expect(parseUsage({ five_hour: { utilization: NaN, resets_at: null } })).toEqual([]);
+    expect(parseUsage({ five_hour: { utilization: Infinity, resets_at: null } })).toEqual([]);
+    expect(parseUsage({ five_hour: { utilization: -Infinity, resets_at: null } })).toEqual([]);
+  });
+
+  it("skips a cap whose utilization is not a number", () => {
+    expect(parseUsage({ five_hour: { utilization: "46", resets_at: null } })).toEqual([]);
+    expect(parseUsage({ five_hour: { utilization: null, resets_at: null } })).toEqual([]);
+  });
+
+  it("keeps a finite 0 (a real reading, not garbage)", () => {
+    const samples = parseUsage({ five_hour: { utilization: 0, resets_at: null } });
+    expect(samples).toEqual([
+      { cap: "five_hour", pct: 0, resetsAt: null, capturedAt: samples[0]!.capturedAt },
+    ]);
+  });
 });
 
 describe("pollUsage", () => {

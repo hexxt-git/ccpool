@@ -32,7 +32,13 @@ export function parseUsage(
       | { utilization?: unknown; resets_at?: unknown }
       | null
       | undefined;
-    if (!node || typeof node.utilization !== "number") continue;
+    // `typeof NaN === "number"`, so guard finiteness too: a NaN/Infinity pct would
+    // poison reset detection (pct-drop) and attribution. Skip the cap rather than
+    // render garbage — same treatment as a null cap. We still trust a *finite*
+    // pct verbatim and never estimate it from tokens.
+    if (!node || typeof node.utilization !== "number" || !Number.isFinite(node.utilization)) {
+      continue;
+    }
     out.push({
       cap,
       pct: node.utilization,

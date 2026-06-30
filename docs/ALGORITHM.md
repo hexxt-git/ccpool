@@ -146,7 +146,11 @@ The response has one node per cap, e.g.:
 
 Parsing maps each non-null cap to a `UsageSample`. **`pct` is taken verbatim from
 `utilization`** — we never derive a percentage from token counts (that mapping is
-unstable). A `null` cap is skipped, never rendered as 0%:
+unstable). A `null` cap is skipped, never rendered as 0%. The guard also rejects a
+**non-finite** `utilization` (`NaN`/`Infinity`): because `typeof NaN === "number"`,
+a bare type check would let it through and poison reset detection (§3) and
+attribution (§7), so such a cap is skipped exactly like a `null` one — we still
+trust any _finite_ pct verbatim:
 
 ```ts
 export function parseUsage(body: unknown, capturedAt = new Date().toISOString()): UsageSample[] {
@@ -154,7 +158,8 @@ export function parseUsage(body: unknown, capturedAt = new Date().toISOString())
   const out: UsageSample[] = [];
   for (const cap of CAP_KINDS) {
     const node = obj[CAP_FIELD[cap]] as { utilization?: unknown; resets_at?: unknown } | null;
-    if (!node || typeof node.utilization !== "number") continue;
+    if (!node || typeof node.utilization !== "number" || !Number.isFinite(node.utilization))
+      continue;
     out.push({
       cap,
       pct: node.utilization,
@@ -638,6 +643,8 @@ sam        45%▲    23%·     ← over the 33% 5h target, within the 33% weekly
 - A **name** is the only identity (`^[A-Za-z0-9-]+$`), stored in local config — not
   bound to a machine. Several people can share a machine and hand off with
   `config set name <name>`; the running daemon picks up the change next tick.
+  `isValidName` also **reserves `unknown`** (case-insensitive): a person can't
+  register as the bucket below, or their share would silently merge into it.
 - **`unknown`** is a normal, always-listed row. It receives: activity ingested with
   no/invalid name, tank rises during intervals with no measured Code activity
   (chat/mobile/web, or daemon down), the pre-daemon baseline, and normalization
@@ -663,21 +670,22 @@ contract suite additionally runs against a real Postgres.
 
 ## Appendix — edge cases the algorithm bakes in
 
-| Situation                                 | Behavior                                                    |
-| ----------------------------------------- | ----------------------------------------------------------- |
-| Tank already high when daemon starts      | That level is `unknown`'s baseline (§7).                    |
-| Mobile / web / chat usage                 | Tank rises with no Code activity → `unknown` (§7).          |
-| Daemon was down during usage              | Those messages aren't in the DB → that rise → `unknown`.    |
-| Access token expired                      | Skip the poll; keep ingesting + writing state (§5).         |
-| 401 with a non-expired token (clock skew) | Treat like expiry; don't back off.                          |
-| Network error                             | Exponential backoff (cap 5m), jittered; ingest still runs.  |
-| Mid-week out-of-band reset                | Detected by pct-drop, never by `resets_at` (§3).            |
-| Same request logged on several lines      | Dedup by `requestId` so it's counted once (§4).             |
-| Partial trailing JSONL line               | Offset stops at the last newline; resumed next tick (§4).   |
-| Daemon restart                            | Re-baseline transcripts at EOF — no backfill (§4).          |
-| `weekly-opus` not on the plan (`null`)    | Skipped, not rendered as 0% (§2).                           |
-| Two people, one machine                   | Hand off with `config set name`; applied next tick (§11).   |
-| DB unreachable mid-run                    | Serve last-known from `state.json` with a stale badge (§8). |
+| Situation                                 | Behavior                                                      |
+| ----------------------------------------- | ------------------------------------------------------------- |
+| Tank already high when daemon starts      | That level is `unknown`'s baseline (§7).                      |
+| Mobile / web / chat usage                 | Tank rises with no Code activity → `unknown` (§7).            |
+| Daemon was down during usage              | Those messages aren't in the DB → that rise → `unknown`.      |
+| Access token expired                      | Skip the poll; keep ingesting + writing state (§5).           |
+| 401 with a non-expired token (clock skew) | Treat like expiry; don't back off.                            |
+| Network error                             | Exponential backoff (cap 5m), jittered; ingest still runs.    |
+| Mid-week out-of-band reset                | Detected by pct-drop, never by `resets_at` (§3).              |
+| Same request logged on several lines      | Dedup by `requestId` so it's counted once (§4).               |
+| Partial trailing JSONL line               | Offset stops at the last newline; resumed next tick (§4).     |
+| Daemon restart                            | Re-baseline transcripts at EOF — no backfill (§4).            |
+| `weekly-opus` not on the plan (`null`)    | Skipped, not rendered as 0% (§2).                             |
+| Cap with a `NaN`/`Infinity` utilization   | Skipped like a `null` cap; never poisons the trajectory (§2). |
+| Two people, one machine                   | Hand off with `config set name`; applied next tick (§11).     |
+| DB unreachable mid-run                    | Serve last-known from `state.json` with a stale badge (§8).   |
 
 ```
 

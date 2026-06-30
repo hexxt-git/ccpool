@@ -101,6 +101,32 @@ describe("attributeShares", () => {
     expect(get(rows, UNKNOWN_USER)).toBeCloseTo(5, 5); // post-reset baseline only
   });
 
+  it("clamps attributed shares so users never exceed the final tank", () => {
+    // sam drives 0 -> 50, then a sub-epsilon dip to 49.7 (not a reset), then back
+    // to 50 — so sam's summed deltas (~50.3) exceed the final tank of 50. The clamp
+    // must scale users down to the tank and leave unknown at 0.
+    const samples = [
+      sample("five_hour", 0, 0),
+      sample("five_hour", 50, 10),
+      sample("five_hour", 49.7, 20),
+      sample("five_hour", 50, 30),
+    ];
+    const messages = [msg("sam", 5, 1000), msg("sam", 25, 1000)];
+    const rows = attributeShares(samples, messages, now);
+    expect(get(rows, "sam")).toBeCloseTo(50, 5);
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(0, 5);
+    expect(fiveHour(rows).reduce((a, r) => a + r.pct, 0)).toBeCloseTo(50, 5);
+  });
+
+  it("drops messages with an unparseable timestamp instead of crashing", () => {
+    const samples = [sample("five_hour", 0, 0), sample("five_hour", 40, 10)];
+    const bad = { ...msg("sam", 5, 1000), timestamp: "not-a-date" };
+    const rows = attributeShares(samples, [bad], now);
+    // the bad message is filtered out, so its rise falls to unknown
+    expect(get(rows, "sam")).toBeCloseTo(0, 5);
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(40, 5);
+  });
+
   it("only counts opus-model activity toward the opus cap", () => {
     const samples = [sample("seven_day_opus", 0, 0), sample("seven_day_opus", 40, 10)];
     // a non-opus message must not claim opus usage

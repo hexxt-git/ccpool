@@ -2,6 +2,7 @@ import { isValidName, resolveConfigDir, SCHEMA_VERSION, type StorageDriver } fro
 import { loadConfig, newConfig, saveConfig } from "../lib/config.js";
 import { makeStorage } from "../lib/storage.js";
 import { withPrompts } from "../lib/prompt.js";
+import { validateUrl } from "../lib/validate.js";
 
 interface InitOptions {
   reconfigure?: boolean;
@@ -48,6 +49,12 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     const url = opts.url ?? (await p.ask(`Enter the database URL [${urlHint}]`));
     if (!url) {
       console.error("A database URL is required.");
+      process.exitCode = 1;
+      return;
+    }
+    const urlErr = validateUrl(driver, url);
+    if (urlErr) {
+      console.error(urlErr);
       process.exitCode = 1;
       return;
     }
