@@ -23,10 +23,7 @@ export function renderTank(samples: UsageSample[], now: number = Date.now()): st
   for (const cap of CAP_KINDS) {
     const label = CAP_LABEL[cap].padEnd(12);
     const s = byCap.get(cap);
-    if (!s) {
-      lines.push(`${label}—   not applicable on this plan`);
-      continue;
-    }
+    if (!s) continue;
     const cd = countdown(s.resetsAt, now);
     const resets = cd ? `· resets in ${cd}` : "";
     lines.push(`${label}${bar(s.pct)}  ${pctLabel(s.pct).padStart(4)}   ${resets}`);
@@ -85,7 +82,7 @@ export function renderUserTable(
     return (byUserCap.get(`${b}:${sortCap}`) ?? 0) - (byUserCap.get(`${a}:${sortCap}`) ?? 0);
   });
 
-  const lines: string[] = [""];
+  const lines: string[] = [];
   lines.push("user".padEnd(nameWidth) + caps.map(head).join(""));
   lines.push("-".repeat(nameWidth) + caps.map(() => " ".repeat(colWidth - 6) + "------").join(""));
   for (const u of ordered) {
@@ -95,21 +92,27 @@ export function renderUserTable(
   return lines;
 }
 
-/**
- * The full view shared by `status` and `tui`: the tank header, the per-user
- * table, then edge-state notes. One renderer, two surfaces.
- */
-export function renderView(vm: ViewModel, now: number = Date.now()): string[] {
+/** Tank + user table lines — no freshness footer. Used by the TUI to compose its own bottom bar. */
+export function renderContent(vm: ViewModel, now: number = Date.now()): string[] {
   const lines = renderTank(vm.samples, now);
-  lines.push(...renderUserTable(vm.shares, vm.samples, vm.budgets));
+  const userLines = renderUserTable(vm.shares, vm.samples, vm.budgets);
+  if (userLines.length > 0) {
+    lines.push("");
+    lines.push(...userLines);
+    lines.push("");
+  } else {
+    lines.push("");
+  }
+  return lines;
+}
 
+/** Source + warning notes — the footer row. */
+export function renderFooter(vm: ViewModel, now: number = Date.now()): string[] {
   const notes: string[] = [];
   if (vm.tokenExpired) notes.push("waiting for Claude Code to refresh auth");
   if (!vm.daemonRunning) notes.push("daemon not running — run `ccshare daemon start`");
   if (vm.stale) notes.push("database unreachable — showing last-known");
   if (vm.source === "live") notes.push("live poll — start the daemon to record history");
-
-  lines.push("");
   const freshness =
     vm.source === "db"
       ? `source: shared db · local state ${formatAge(vm.updatedAt, now)}`
@@ -118,8 +121,10 @@ export function renderView(vm: ViewModel, now: number = Date.now()): string[] {
         : vm.source === "live"
           ? "source: live poll"
           : "no data yet";
-  lines.push(freshness);
-  for (const n of notes) lines.push(`  · ${n}`);
+  return [freshness, ...notes.map((n) => `  · ${n}`)];
+}
 
-  return lines;
+/** The full view shared by `status` and `tui`: tank, user table, then footer. */
+export function renderView(vm: ViewModel, now: number = Date.now()): string[] {
+  return [...renderContent(vm, now), ...renderFooter(vm, now)];
 }

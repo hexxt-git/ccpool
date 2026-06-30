@@ -44,7 +44,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     const urlHint =
       driver === "postgres"
         ? "postgres://user:pass@host/db"
-        : "file:./ccshare.db or libsql://team.turso.io";
+        : "file:~/.ccshare/ccshare.db or libsql://team.turso.io";
     const url = opts.url ?? (await p.ask(`Enter the database URL [${urlHint}]`));
     if (!url) {
       console.error("A database URL is required.");
