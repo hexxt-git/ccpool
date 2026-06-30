@@ -34,8 +34,8 @@ the request path. Two facts drive the entire design:
                       │     state.json (atomic)         shared DB (samples + messages)      │
                       └────────────┼─────────────────────────┼─────────────────────────────┘
                                    │                          │
-                  statusline ◄─────┘            tui / status ◄┴─ gatherView() + attributeShares()
-                  (reads state only)            (DB everyone-included, attributes deltas)
+                  statusline ◄─────┘    tui / status ◄┴─ gatherView() + attributeShares() + summarizeMembers()
+                  (reads state only)    (DB everyone-included: deltas → per-person split, tokens, active)
 ```
 
 No process talks to another process. The contract is **files and the database
@@ -112,7 +112,9 @@ export function isTokenExpired(c: { expiresAt: number }, now = Date.now()): bool
 
 `resolver.ts` separately reads `oauthAccount.accountUuid` from the global JSON to
 identify the **account** (used to scope/label the tank) — never the person. The
-person is just a name in ccshare's own config.
+person is just a name in ccshare's own config. The views also read
+`oauthAccount.emailAddress` from the same file to show a human-readable account
+label, cached ~once a minute since it barely changes (§8).
 
 ---
 
@@ -543,13 +545,16 @@ before the daemon's first write:
 ```ts
 // apps/cli/src/lib/view.ts  (abridged)
 const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-const [latest, samplesSince, messagesSince, budgets] = await Promise.all([
+const [latest, samplesSince, messagesSince, resetsSince, budgets] = await Promise.all([
   storage.getLatestSamples(), // the header bars
   storage.getUsageSamplesSince(since), // the trajectory, for attribution
   storage.getMessageUsageSince(since), // everyone's measured activity
+  storage.getResetsSince(since), // reset events bound the window (§7)
   storage.getBudgets(),
 ]);
-const shares = attributeShares(samplesSince, messagesSince, now); // §7
+const shares = attributeShares(samplesSince, messagesSince, now, resetsSince); // §7 — the split
+const members = summarizeMembers(messagesSince); // per-name token totals + last-seen
+const account = await resolveEmail(configDir); // oauthAccount.emailAddress, cached ~1/min
 
 let samples = latest,
   source = latest.length ? "db" : "none";
@@ -566,19 +571,41 @@ if (!samples.length) {
 }
 ```
 
-The renderer turns this into the header bars + a per-user table whose rows sum to
-the header. `status` prints one frame; `tui` re-runs `gatherView` every 2s and
-ticks the clock every 1s so countdowns move. Edge states (token expired, daemon
-down, DB unreachable, live-poll badge) render as footnotes.
+`toDesignModel` flattens this into one presentation model: **caps** (the header
+bars) and **members** (each person's per-window share, joined with their token
+total and an `active` flag). `active` is deliberately simple — the member is
+holding more than 0% of the **5-hour** window right now. The member list is keyed
+on the people attribution produced; `unknown` is always last.
+
+Two surfaces render that model:
+
+- **`status`** is a plain-string renderer (`status-render.ts`): one frame,
+  **coloured when stdout is a TTY and plain text when piped/redirected**, so
+  `status | grep` and `status > file` stay clean. It targets 70 columns and sheds
+  columns (the per-member bar, then trailing caps) on narrower terminals. Bar colour
+  comes from a calculated green→red ramp (`heat.ts`, hue 120°→0° in HSL); each
+  member's bar matches their name colour.
+- **`tui`** re-runs `gatherView` every 2s (and ticks the clock every 1s so
+  countdowns move), rendering the same model through one of three interchangeable
+  Ink layouts — **overview · split · mono**, cycled with `⇧⇥` — adding per-person
+  token totals and scrolling for large groups.
+
+Edge states (token expired, daemon down, DB unreachable, live-poll badge) render as
+footnotes.
 
 ```
-5h          ▓▓▓▓▓▓▓▓▓░   92%
-weekly      ▓▓░░░░░░░░   21%
+ ▐▛███▜▌   ccshare · status  ·  you are sam
+▝▜█████▛▘  account sam@example.com  ·  2 members (1 active)
+  ▘▘ ▝▝    shared db · synced 12s ago · daemon running
 
-user         5h  weekly
--------  ------  ------
-sam         5%      1%
-unknown    87%     20%
+overall
+  5h      ███████████████████████████░░   92%  · resets 4h 02m
+  weekly  ██████░░░░░░░░░░░░░░░░░░░░░░░░   21%  · resets 6d 4h
+
+members
+   # member    usage                          5h   wk  state
+   1 sam ◂     █░░░░░░░░░░░░░░░░░░░░░░░░░░   5%   1%  active
+   2 unknown   ██████████████████████████  87%  20%  idle
 ```
 
 ---
@@ -647,18 +674,19 @@ schema.
 
 ## 10. Budgets
 
-Optional fair-share targets per `(name, cap)`. They don't change attribution; they
-just annotate it. A user whose share exceeds their target gets a `▲`:
+Optional fair-share targets per `(name, cap)`, set with `budget set` and shown by
+`budget list`. They don't change attribution; they only annotate it — a share above
+its target is "over":
 
 ```ts
-// apps/cli/src/lib/render.ts
-const budget = budgetOf.get(`${u}:${c}`);
-const mark = budget === undefined ? " " : pct > budget + 0.5 ? "▲" : "·";
+const over = budget !== undefined && pct > budget + 0.5; // ▲ over · within
 ```
 
-```
-sam        45%▲    23%·     ← over the 33% 5h target, within the 33% weekly target
-```
+> **Note:** the inline `▲`/`·` over-budget marker is **not currently rendered** by
+> the redesigned `status`/`tui` views — `toDesignModel` doesn't yet thread budgets
+> through to the member rows. The original text-table renderer in
+> `apps/cli/src/lib/render.ts` still contains the marker logic; re-surfacing it in
+> the new designs is open work.
 
 ---
 

@@ -4,6 +4,8 @@ export * from "./types.js";
 export * from "./storage/storage.js";
 export { MemoryStorage } from "./storage/memory.js";
 export { attributeShares, CAP_WINDOW_MS } from "./state/shares.js";
+export { summarizeMembers, isActive, ACTIVE_WINDOW_MS } from "./state/members.js";
+export type { MemberSummary } from "./state/members.js";
 export { bar, countdown, pctLabel, CAP_LABEL } from "./state/format.js";
 
 // identity

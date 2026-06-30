@@ -55,8 +55,9 @@ describe("TUI App", () => {
     expect(frame).toContain("42%");
     expect(frame).toContain("weekly");
     expect(frame).toContain("68%");
-    // daemon isn't running in the test -> edge note shown
-    expect(frame).toContain("daemon not running");
+    // daemon isn't running in the test -> header shows it stopped
+    expect(frame).toContain("daemon ");
+    expect(frame).toContain("stopped");
 
     unmount();
   });

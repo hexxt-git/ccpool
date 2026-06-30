@@ -33,10 +33,10 @@ machine, everyone points at **one shared database**, and the tool shows:
 - **how full each shared window is right now** (5-hour, weekly, weekly-Opus) with
   live reset countdowns — the account-wide truth from Anthropic's endpoint;
 - the **per-person split** of who drove that usage, built from Claude Code activity
-  seen while the daemon runs, credited to the active name on each machine (anything
-  untied to a known name shows as `unknown`);
-- optional **per-person budgets** with over/under indicators, so fairness is
-  visible rather than argued about.
+  seen while the daemon runs, credited to the active name on each machine — with
+  each person's token total and whether they're active right now (anything untied to
+  a known name shows as `unknown`);
+- optional **per-person budgets** — fair-share targets you can set and list.
 
 > It does **not** increase anyone's limit, multiplex the subscription, or enforce
 > anything. It makes shared usage _legible_ so a group can govern itself.
@@ -129,24 +129,39 @@ From now on your live usage flows into the shared DB under your current name.
 ### 5. Watch usage
 
 ```bash
-ccshare tui        # live shared view (alias: ccshare live) — r refresh, q quit
+ccshare tui        # live shared view (alias: ccshare live)
+                   #   ⇧⇥ switch view · ↑↓ scroll · r refresh · q quit
 ccshare status     # one-shot snapshot to stdout
 ```
 
-```
-5h          ▓▓▓▓▓▓░░░░   60%   · resets in 4h 02m
-weekly      ▓▓▓░░░░░░░   30%   · resets in 6d 4h
+`status` prints a single frame — coloured when stdout is a terminal, clean plain
+text when piped or redirected (so `status | grep` and `status > file` stay tidy).
+It targets a 70-column terminal and sheds columns gracefully on narrower ones:
 
-user         5h  weekly
--------  ------  ------
-sam        45%▲    23%·
-alex       15%      8%
-unknown     0%      0%
+```
+ ▐▛███▜▌   ccshare · status  ·  you are sam
+▝▜█████▛▘  account sam@example.com  ·  3 members (2 active)
+  ▘▘ ▝▝    shared db · synced 12s ago · daemon running
+
+overall
+  5h      ██████████████████░░░░░░░░░░░░   60%  · resets 4h 02m
+  weekly  █████████░░░░░░░░░░░░░░░░░░░░░   30%  · resets 6d 4h
+
+members
+   # member    usage                          5h   wk  state
+   1 sam ◂     ███████████████░░░░░░░░░░░░░  45%  23%  active
+   2 alex      █████░░░░░░░░░░░░░░░░░░░░░░░  15%   8%  active
+   3 unknown   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0%   0%  idle
 ```
 
-The header is the overall account tank; the rows are each person's slice of it,
-and they sum to the header per column. `unknown` is always listed and absorbs
-usage the Code split can't see (e.g. claude.ai chat).
+The header is the overall account tank; the member rows are each person's slice of
+it (summing to the header per window), plus whether they're **active** — holding any
+of the 5-hour window right now. `unknown` is always listed and absorbs usage the
+Code split can't see (e.g. claude.ai chat).
+
+`ccshare tui` shows the same data live and adds three interchangeable layouts
+(**overview · split · mono**, cycle with `⇧⇥`), per-person token totals, and
+scrolling for large groups.
 
 ### 6. Statusline (optional)
 
@@ -180,7 +195,9 @@ ccshare budget set sam 5h 33
 ccshare budget list
 ```
 
-Over-budget shows a `▲` next to that person's share in `tui`/`status`.
+Targets are stored per `(name, cap)` and shown by `budget list`. (The inline
+over/under marker isn't surfaced in the redesigned `status`/`tui` views yet — see
+`docs/ALGORITHM.md` §10.)
 
 ---
 

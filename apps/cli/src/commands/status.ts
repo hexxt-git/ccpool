@@ -1,11 +1,13 @@
 import { requireInit } from "../lib/guard.js";
 import { gatherView } from "../lib/view.js";
-import { renderView } from "../lib/render.js";
+import { toDesignModel } from "../lib/design-model.js";
+import { renderStatusLines } from "../lib/status-render.js";
 
 /**
- * One-shot snapshot of the shared account tank, rendered from the same view
- * model `tui` uses. Prefers the shared DB, then local state.json, then a live
- * poll (§10).
+ * One-shot snapshot of the shared account tank. Renders the `status` design as
+ * plain string lines: colored when stdout is a terminal, plaintext when piped or
+ * redirected (so `status | grep` and `status > file` stay clean). Sized to the
+ * terminal width, degrading on narrow widths (§10).
  */
 export async function runStatus(): Promise<void> {
   const ctx = await requireInit();
@@ -13,7 +15,10 @@ export async function runStatus(): Promise<void> {
   const { cfg, storage } = ctx;
   try {
     const vm = await gatherView(cfg, storage);
-    for (const line of renderView(vm)) console.log(line);
+    const model = toDesignModel(vm, cfg.name);
+    const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+    const width = process.stdout.columns ?? 70;
+    for (const line of renderStatusLines(model, { width, color })) console.log(line);
   } finally {
     await storage.close();
   }
