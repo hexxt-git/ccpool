@@ -82,6 +82,10 @@ export class MemoryStorage implements Storage {
     this.resets.push(e);
   }
 
+  async getResetsSince(since: string): Promise<ResetEvent[]> {
+    return this.resets.filter((e) => e.at >= since);
+  }
+
   async recordMessageUsage(rows: MessageUsage[]): Promise<void> {
     for (const r of rows) {
       // idempotent on uuid

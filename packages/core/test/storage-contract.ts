@@ -114,6 +114,17 @@ export function runStorageContract(h: ContractHarness): void {
       expect(msgs.map((m) => m.uuid).sort()).toEqual(["a"]);
     });
 
+    it("returns recorded resets since a cutoff", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      await s.recordReset({ cap: "five_hour", at: "2026-06-29T10:00:00.000Z", previousPct: 90 });
+      await s.recordReset({ cap: "seven_day", at: "2026-06-28T10:00:00.000Z", previousPct: 80 });
+      const resets = await s.getResetsSince("2026-06-29T00:00:00.000Z");
+      expect(resets).toEqual([
+        { cap: "five_hour", at: "2026-06-29T10:00:00.000Z", previousPct: 90 },
+      ]);
+    });
+
     it("sets and reads budgets, upserting on conflict", async () => {
       const s = await open(h.fresh());
       await s.initializeSchema();

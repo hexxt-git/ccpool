@@ -65,15 +65,16 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     const now = Date.now();
     // pull enough history to cover the widest window, then attribute deltas
     const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-    const [latest, samplesSince, messagesSince, b] = await Promise.all([
+    const [latest, samplesSince, messagesSince, resetsSince, b] = await Promise.all([
       storage.getLatestSamples(),
       storage.getUsageSamplesSince(since),
       storage.getMessageUsageSince(since),
+      storage.getResetsSince(since),
       storage.getBudgets(),
     ]);
     dbSamples = latest;
     budgets = b;
-    shares = attributeShares(samplesSince, messagesSince, now);
+    shares = attributeShares(samplesSince, messagesSince, now, resetsSince);
   } catch {
     stale = true;
   }

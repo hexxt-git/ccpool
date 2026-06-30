@@ -417,11 +417,17 @@ caused them:
 
 1. The tank level at the **earliest reading in the window** is `unknown`'s
    **baseline** (pre-daemon usage is nobody's).
-2. Walk consecutive samples. For each **rise** `Δ = curPct − prevPct`, look at the
-   Code activity whose timestamp falls in that interval:
+2. Walk consecutive samples, tracking a **monotonic envelope** (the running max so
+   far in the window). For each step, the rise `Δ = newMax − oldMax` is the genuine
+   new-high; look at the Code activity whose timestamp falls in that interval:
    - activity present → split `Δ` across those users by token weight;
    - none → the whole `Δ` is `unknown` (mobile / web / chat, or daemon was down).
-3. A **drop** is a reset → clear everything and re-baseline at the new (low) level.
+     A reading that **dips** below the running max (clock-skew reorder across machines,
+     or sub-point float wobble) is a new-high of zero — it neither inflates the active
+     user nor discards their interval.
+3. The window is bounded by **recorded reset events**, not by re-detecting drops here
+   (a multi-machine series sorted by `capturedAt` can reorder under clock skew, and a
+   view-time drop check would read that as a phantom reset).
 4. `unknown` absorbs any remainder so the column totals the current tank.
 
 ```ts
@@ -432,8 +438,9 @@ attributed.set(UNKNOWN_USER, win[0].pct);            // 1. baseline = pre-daemon
 let mi = 0;                                          // pointer into time-sorted messages
 while (mi < msgs.length && msgs[mi].t <= win[0].t) mi++;   // skip pre-baseline activity
 
+let envMax = win[0].pct;                              // monotonic envelope (running max)
 for (let i = 1; i < win.length; i++) {
-  const prev = win[i - 1], cur = win[i];
+  const cur = win[i];
 
   // 2a. collect this interval's activity (advance pointer regardless of Δ)
   const weights = new Map<string, number>(); let total = 0;
@@ -444,8 +451,9 @@ for (let i = 1; i < win.length; i++) {
     total += m.w;
   }
 
-  const delta = cur.pct - prev.pct;
-  if (delta <= 0) continue;                          // 3. reset/dip handled by windowing
+  const newMax = Math.max(envMax, cur.pct);
+  const delta = newMax - envMax; envMax = newMax;    // rise off the running max
+  if (delta <= 0) continue;                          // 3. dip/wobble → zero new-high
 
   if (total > 0) {                                   // 2b. split the rise by weight
     for (const [u, w] of weights) attributed.set(u, (attributed.get(u) ?? 0) + delta * w / total);
@@ -467,19 +475,32 @@ if (nonUnknown > target) {
 }
 ```
 
-The window (`win`) is bounded to the **current reset cycle** — it starts at the
-last detected pct-drop and never looks back further than the cap's length:
+The window (`win`) is bounded to the **current reset cycle** — it starts at the most
+recent **recorded reset event** (§3) for the cap and never looks back further than
+the cap's length. It deliberately does **not** re-detect resets from pct drops in the
+merged series: machines have skewed clocks, so a genuine rise can land out of order
+(46% before 45%), and a view-time drop check would read that one-percent dip as a
+phantom reset and dump the whole split into `unknown`. Reset events are recorded on a
+single machine's clock between two of its own readings, so they don't suffer that.
 
 ```ts
 const cutoff = now - CAP_WINDOW_MS[cap]; // 5h or 7d
 let start = 0;
 for (let i = 1; i < capSamples.length; i++) {
-  if (capSamples[i].pct < capSamples[i - 1].pct - RESET_EPS)
-    start = i; // reset
-  else if (capSamples[i].t < cutoff) start = i; // too old
+  if (capSamples[i].t < cutoff) start = i; // too old
+}
+const lastReset = resetTimes.length ? Math.max(...resetTimes) : -Infinity;
+if (lastReset > -Infinity) {
+  // drop the previous cycle: begin at the first sample at/after the reset
+  const firstAfter = capSamples.findIndex((s) => s.t >= lastReset);
+  start = Math.max(start, firstAfter < 0 ? capSamples.length - 1 : firstAfter);
 }
 const win = capSamples.slice(start);
 ```
+
+The daemon seeds its `prev` reading from the shared DB at startup, so a reset that
+happened while it was down is caught — and recorded as an event — on the first poll,
+rather than being missed because `prev` began empty.
 
 ### Worked example
 
@@ -504,10 +525,11 @@ participant — on any machine — was active in that interval. Activity from a 
 whose daemon was down simply isn't in the DB, so that interval's rise falls to
 `unknown`.
 
-It remains an **estimate**: cache token fields are reliable but raw input/output
-undercount, and Code + chat happening in the _same ~60s interval_ can't be
-perfectly separated (that sliver attaches to the active user). It's bounded by the
-interval's delta — a world better than the whole tank.
+It remains an **estimate**: the inter-user weight is the reliable signal
+(`cache_read + cache_creation + output`; `input_tokens` is left out because it
+undercounts and isn't comparable between users), and Code + chat happening in the
+_same ~60s interval_ can't be perfectly separated (that sliver attaches to the active
+user). It's bounded by the interval's delta — a world better than the whole tank.
 
 ---
 
@@ -589,6 +611,8 @@ interface Storage {
   recordUsageSample(s): Promise<void>;
   getLatestSamples(): Promise<UsageSample[]>;
   getUsageSamplesSince(since): Promise<UsageSample[]>; // trajectory for attribution
+  recordReset(e): Promise<void>;
+  getResetsSince(since): Promise<ResetEvent[]>; // window bounds for attribution
   recordMessageUsage(rows): Promise<void>; // idempotent on uuid
   getMessageUsageSince(since): Promise<MessageUsage[]>;
   setBudget(name, cap, pct);

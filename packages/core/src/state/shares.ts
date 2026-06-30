@@ -1,4 +1,4 @@
-import type { CapKind, MessageUsage, UsageSample, UserShare } from "../types.js";
+import type { CapKind, MessageUsage, ResetEvent, UsageSample, UserShare } from "../types.js";
 import { CAP_KINDS, UNKNOWN_USER } from "../types.js";
 
 const HOUR = 60 * 60 * 1000;
@@ -10,11 +10,14 @@ export const CAP_WINDOW_MS: Record<CapKind, number> = {
   seven_day_opus: 7 * 24 * HOUR,
 };
 
-/** A clear pct drop means a reset; sub-point wobble does not. */
-const RESET_EPS = 0.5;
-
+/**
+ * Attribution weight. The cache fields (read + creation) are the reliable,
+ * high-volume signal; `output` is the user's generated work. `input_tokens` is
+ * left out on purpose — it undercounts and isn't comparable between users, so
+ * folding it in only skews the inter-user split.
+ */
 function tokenWeight(m: MessageUsage): number {
-  return m.inputTokens + m.outputTokens + m.cacheCreationTokens + m.cacheReadTokens;
+  return m.cacheCreationTokens + m.cacheReadTokens + m.outputTokens;
 }
 
 function isOpus(model: string | null): boolean {
@@ -32,17 +35,29 @@ function isOpus(model: string | null): boolean {
  * being down) falls to `unknown`. `unknown` always absorbs the remainder so each
  * column totals the tank.
  *
- * This is the only honest way to keep measured Code activity from claiming usage
- * it didn't cause. It's still an estimate (cache fields reliable; raw I/O
- * undercounts; same-interval Code + chat can't be perfectly separated).
+ * Two properties keep this honest across machines:
+ *   - The window is bounded by *recorded* {@link ResetEvent}s, not by re-detecting
+ *     pct drops in the merged series. Clock skew between machines can reorder
+ *     readings (46% landing before 45%); a view-time drop check reads that as a
+ *     phantom reset and dumps the split into `unknown`. Reset events are recorded
+ *     on a single machine's clock, so they don't suffer that.
+ *   - Rises are measured off a monotonic envelope (running max within the window),
+ *     so an out-of-order dip or sub-point wobble is a new-high of zero — it neither
+ *     inflates the active user nor discards their interval.
+ *
+ * It's still an estimate (cache fields reliable; raw I/O undercounts; same-interval
+ * Code + chat can't be perfectly separated).
  *
  * @param samples  the tank trajectory (all caps), any order
  * @param messages raw measured Code activity, any order
+ * @param now      the instant the window is anchored to
+ * @param resets   recorded reset events (all caps), any order — bound the window
  */
 export function attributeShares(
   samples: UsageSample[],
   messages: MessageUsage[],
-  now: number = Date.now()
+  now: number = Date.now(),
+  resets: ResetEvent[] = []
 ): UserShare[] {
   const msgs = messages
     .map((m) => ({ t: Date.parse(m.timestamp), user: m.user, model: m.model, w: tokenWeight(m) }))
@@ -57,7 +72,11 @@ export function attributeShares(
       .filter((s) => Number.isFinite(s.t))
       .sort((a, b) => a.t - b.t);
     if (capSamples.length === 0) continue;
-    out.push(...attributeCap(cap, capSamples, msgs, now));
+    const resetTimes = resets
+      .filter((r) => r.cap === cap)
+      .map((r) => Date.parse(r.at))
+      .filter((t) => Number.isFinite(t) && t <= now);
+    out.push(...attributeCap(cap, capSamples, msgs, now, resetTimes));
   }
   return out;
 }
@@ -77,16 +96,29 @@ function attributeCap(
   cap: CapKind,
   capSamples: TimedSample[],
   msgs: TimedMsg[],
-  now: number
+  now: number,
+  resetTimes: number[]
 ): UserShare[] {
-  // Bound to the current window: start at the last reset (pct drop), and never
-  // look back further than the cap's window length.
+  // Bound to the current window. Start at the most recent reset (a *recorded*
+  // event, not a re-detected pct drop — see attributeShares) and never look back
+  // further than the cap's window length.
   const cutoff = now - CAP_WINDOW_MS[cap];
   let start = 0;
   for (let i = 1; i < capSamples.length; i++) {
-    if (capSamples[i]!.pct < capSamples[i - 1]!.pct - RESET_EPS)
-      start = i; // reset
-    else if (capSamples[i]!.t < cutoff) start = i; // too old to matter
+    if (capSamples[i]!.t < cutoff) start = i; // too old to matter
+  }
+  const lastReset = resetTimes.length ? Math.max(...resetTimes) : -Infinity;
+  if (lastReset > -Infinity) {
+    // drop everything from a previous reset cycle: the window begins at the first
+    // sample at/after the reset (or the lone last sample if none caught up yet).
+    let firstAfter = capSamples.length - 1;
+    for (let i = 0; i < capSamples.length; i++) {
+      if (capSamples[i]!.t >= lastReset) {
+        firstAfter = i;
+        break;
+      }
+    }
+    start = Math.max(start, firstAfter);
   }
   const win = capSamples.slice(start);
 
@@ -98,8 +130,8 @@ function attributeCap(
   // skip messages at or before the baseline instant
   while (mi < msgs.length && msgs[mi]!.t <= win[0]!.t) mi++;
 
+  let envMax = win[0]!.pct; // monotonic envelope: rises only, dips contribute zero
   for (let i = 1; i < win.length; i++) {
-    const prev = win[i - 1]!;
     const cur = win[i]!;
 
     // gather this interval's Code activity (advance the pointer regardless of
@@ -114,8 +146,13 @@ function attributeCap(
       total += m.w;
     }
 
-    const delta = cur.pct - prev.pct;
-    if (delta <= 0) continue; // reset/dip: nothing to attribute this interval
+    // Measure the rise off the running max. A dip (clock-skew reorder or float
+    // wobble) is a new-high of zero, so it can't inflate a user or be skipped in a
+    // way that drops their interval's messages unfairly.
+    const newMax = cur.pct > envMax ? cur.pct : envMax;
+    const delta = newMax - envMax;
+    envMax = newMax;
+    if (delta <= 0) continue;
 
     if (total > 0) {
       for (const [u, w] of weights) {

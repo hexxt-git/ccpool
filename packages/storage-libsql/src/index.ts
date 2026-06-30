@@ -173,6 +173,18 @@ export class LibsqlStorage implements Storage {
     });
   }
 
+  async getResetsSince(since: string): Promise<ResetEvent[]> {
+    const { rows } = await this.client.execute({
+      sql: `SELECT cap, at, previousPct FROM reset_events WHERE at >= ? ORDER BY at ASC`,
+      args: [since],
+    });
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      at: String(r.at),
+      previousPct: Number(r.previousPct),
+    }));
+  }
+
   async recordMessageUsage(rows: MessageUsage[]): Promise<void> {
     if (rows.length === 0) return;
     await this.client.batch(

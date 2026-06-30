@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attributeShares } from "./shares.js";
-import { UNKNOWN_USER, type MessageUsage, type UsageSample } from "../types.js";
+import { UNKNOWN_USER, type MessageUsage, type ResetEvent, type UsageSample } from "../types.js";
 
 const T0 = Date.parse("2026-06-29T20:00:00.000Z");
 const at = (offsetMin: number) => new Date(T0 + offsetMin * 60_000).toISOString();
@@ -13,6 +13,13 @@ const sample = (cap: UsageSample["cap"], pct: number, offsetMin: number): UsageS
   capturedAt: at(offsetMin),
 });
 
+const reset = (cap: ResetEvent["cap"], offsetMin: number, previousPct: number): ResetEvent => ({
+  cap,
+  at: at(offsetMin),
+  previousPct,
+});
+
+// `tokens` lands in a reliable field (cache read) since that's what attribution weighs.
 const msg = (
   user: string,
   offsetMin: number,
@@ -23,10 +30,10 @@ const msg = (
   user,
   timestamp: at(offsetMin),
   model,
-  inputTokens: tokens,
+  inputTokens: 0,
   outputTokens: 0,
   cacheCreationTokens: 0,
-  cacheReadTokens: 0,
+  cacheReadTokens: tokens,
 });
 
 const fiveHour = (rows: ReturnType<typeof attributeShares>) =>
@@ -89,33 +96,82 @@ describe("attributeShares", () => {
     expect(total).toBeCloseTo(55, 5);
   });
 
-  it("resets the baseline when the tank drops (window reset)", () => {
-    // 90% then a reset to 5%, then user climbs 5 -> 20
+  it("resets the baseline at a recorded reset event", () => {
+    // 90% then a reset to 5% (recorded), then user climbs 5 -> 20
     const samples = [
       sample("five_hour", 90, 0),
       sample("five_hour", 5, 10),
       sample("five_hour", 20, 20),
     ];
-    const rows = attributeShares(samples, [msg("sam", 15, 1000)], now);
+    const resets = [reset("five_hour", 10, 90)];
+    const rows = attributeShares(samples, [msg("sam", 15, 1000)], now, resets);
     expect(get(rows, "sam")).toBeCloseTo(15, 5);
     expect(get(rows, UNKNOWN_USER)).toBeCloseTo(5, 5); // post-reset baseline only
   });
 
-  it("clamps attributed shares so users never exceed the final tank", () => {
-    // sam drives 0 -> 50, then a sub-epsilon dip to 49.7 (not a reset), then back
-    // to 50 — so sam's summed deltas (~50.3) exceed the final tank of 50. The clamp
-    // must scale users down to the tank and leave unknown at 0.
+  it("does not treat a clock-skew reorder as a phantom reset", () => {
+    // Two machines, skewed clocks: a genuine 45 -> 46 rise lands out of order in
+    // the merged series (46% stamped before 45%). With no recorded reset, the dip
+    // must contribute nothing rather than discard sam's earlier work to unknown.
     const samples = [
       sample("five_hour", 0, 0),
-      sample("five_hour", 50, 10),
-      sample("five_hour", 49.7, 20),
+      sample("five_hour", 45, 10),
+      sample("five_hour", 46, 14), // machine B, clock behind
+      sample("five_hour", 45, 15), // machine A, clock ahead — reordered dip
+      sample("five_hour", 46, 20),
+    ];
+    const messages = [msg("sam", 5, 1000), msg("sam", 12, 1000)];
+    const rows = attributeShares(samples, messages, now);
+    // sam drove the whole 0 -> 46; the skew dip neither resets (which would dump
+    // sam's earlier 45 to unknown) nor inflates beyond the genuine 46.
+    expect(get(rows, "sam")).toBeCloseTo(46, 5);
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(0, 5);
+  });
+
+  it("does not inflate a user from sub-percent wobble on a flat tank", () => {
+    // Tank is genuinely flat at 50 with float wobble; sam is active throughout.
+    // The old code summed every positive delta (0.3 + 0.4 = 0.7); the envelope
+    // bounds sam to the single highest excursion above the baseline (0.3).
+    const samples = [
+      sample("five_hour", 50, 0),
+      sample("five_hour", 50.3, 10),
+      sample("five_hour", 49.8, 20),
+      sample("five_hour", 50.2, 30),
+      sample("five_hour", 50, 40),
+    ];
+    const messages = [msg("sam", 5, 1000), msg("sam", 15, 1000), msg("sam", 35, 1000)];
+    const rows = attributeShares(samples, messages, now);
+    expect(get(rows, "sam")).toBeCloseTo(0.3, 5);
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(49.7, 5);
+  });
+
+  it("clamps attributed shares so users never exceed the final tank", () => {
+    // sam drives 0 -> 60 (envelope peak), then the tank slides back to 50 as the
+    // window rolls. sam's credited rise (60) exceeds the final tank, so the clamp
+    // must scale users down to 50 and leave unknown at 0.
+    const samples = [
+      sample("five_hour", 0, 0),
+      sample("five_hour", 60, 10),
       sample("five_hour", 50, 30),
     ];
-    const messages = [msg("sam", 5, 1000), msg("sam", 25, 1000)];
+    const messages = [msg("sam", 5, 1000)];
     const rows = attributeShares(samples, messages, now);
     expect(get(rows, "sam")).toBeCloseTo(50, 5);
     expect(get(rows, UNKNOWN_USER)).toBeCloseTo(0, 5);
     expect(fiveHour(rows).reduce((a, r) => a + r.pct, 0)).toBeCloseTo(50, 5);
+  });
+
+  it("weighs attribution on reliable cache/output tokens, not input_tokens", () => {
+    // Both users have equal input_tokens; only cache_read differs. The split must
+    // follow the reliable field, not input.
+    const samples = [sample("five_hour", 0, 0), sample("five_hour", 40, 10)];
+    const messages: MessageUsage[] = [
+      { ...msg("sam", 4, 0), inputTokens: 5000, cacheReadTokens: 3000 },
+      { ...msg("alex", 6, 0), inputTokens: 5000, cacheReadTokens: 1000 },
+    ];
+    const rows = attributeShares(samples, messages, now);
+    expect(get(rows, "sam")).toBeCloseTo(30, 5); // 3000 / 4000 of the +40
+    expect(get(rows, "alex")).toBeCloseTo(10, 5); // 1000 / 4000 of the +40
   });
 
   it("drops messages with an unparseable timestamp instead of crashing", () => {

@@ -148,6 +148,16 @@ export class Daemon {
   /** Run until {@link stop}. Backs off exponentially on poll failures. */
   async run(): Promise<void> {
     this.log.info(`daemon up (pid ${process.pid}, name ${this.deps.name})`);
+    // Seed the previous reading from the shared DB so a reset that happened while
+    // this daemon was down is caught (and recorded) on the very first poll — not
+    // silently missed because `prev` started empty.
+    if (this.prev.length === 0) {
+      try {
+        this.prev = await this.deps.storage.getLatestSamples();
+      } catch {
+        /* DB unreachable at startup — fall back to detecting from the first poll on */
+      }
+    }
     while (!this.stopped) {
       let delay = this.deps.pollIntervalMs;
       try {

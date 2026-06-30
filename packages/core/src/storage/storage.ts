@@ -33,6 +33,8 @@ export interface Storage {
   /** The tank trajectory since `since` (all caps, ascending) — drives attribution. */
   getUsageSamplesSince(since: string): Promise<UsageSample[]>;
   recordReset(e: ResetEvent): Promise<void>;
+  /** Recorded resets since `since` (all caps) — bound the attribution window. */
+  getResetsSince(since: string): Promise<ResetEvent[]>;
 
   // per-person attribution (Code surface; batch + idempotent on uuid)
   recordMessageUsage(rows: MessageUsage[]): Promise<void>;

@@ -133,6 +133,16 @@ export class PostgresStorage implements Storage {
       VALUES (${e.cap}, ${e.at}, ${e.previousPct})`;
   }
 
+  async getResetsSince(since: string): Promise<ResetEvent[]> {
+    const rows = await this.sql<{ cap: string; at: string; previousPct: number }[]>`
+      SELECT cap, at, "previousPct" FROM reset_events WHERE at >= ${since} ORDER BY at ASC`;
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      at: r.at,
+      previousPct: Number(r.previousPct),
+    }));
+  }
+
   async recordMessageUsage(rows: MessageUsage[]): Promise<void> {
     if (rows.length === 0) return;
     await this.sql.begin(async (tx) => {
