@@ -13,7 +13,11 @@ export const UNKNOWN_USER = "unknown";
 export const NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 
 export function isValidName(name: string): boolean {
-  return NAME_PATTERN.test(name);
+  if (!NAME_PATTERN.test(name)) return false;
+  // `unknown` is the reserved row that absorbs unattributed usage — a real person
+  // can't claim it, or their share would silently merge into the unknown bucket.
+  // Case-insensitive: "Unknown" rendered next to "unknown" would be just as confusing.
+  return name.toLowerCase() !== UNKNOWN_USER;
 }
 
 /** A participant in the shared ledger. Identity is just a name. */

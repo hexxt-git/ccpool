@@ -50,4 +50,24 @@ describe("readCredentials (plaintext file)", () => {
       rateLimitTier: null,
     });
   });
+
+  it("rejects an empty or missing accessToken", async () => {
+    const f = join(dir, ".credentials.json");
+    await writeFile(f, JSON.stringify({ claudeAiOauth: { accessToken: "", expiresAt: 1 } }));
+    await expect(readCredentials(dir)).rejects.toThrow(/accessToken/);
+
+    await writeFile(f, JSON.stringify({ claudeAiOauth: { expiresAt: 1 } }));
+    await expect(readCredentials(dir)).rejects.toThrow(/accessToken/);
+  });
+
+  it("treats a non-numeric expiresAt as expired (NaN), not as a valid future date", async () => {
+    await writeFile(
+      join(dir, ".credentials.json"),
+      JSON.stringify({ claudeAiOauth: { accessToken: "tok", expiresAt: "not-a-number" } })
+    );
+    const creds = await readCredentials(dir);
+    expect(creds?.accessToken).toBe("tok");
+    expect(Number.isNaN(creds!.expiresAt)).toBe(true);
+    expect(isTokenExpired(creds!)).toBe(true);
+  });
 });

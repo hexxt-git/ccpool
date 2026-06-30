@@ -1,5 +1,6 @@
 import { createClient, type Client, type InValue } from "@libsql/client";
 import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname } from "node:path";
 import {
   CAP_KINDS,
@@ -27,8 +28,9 @@ export class LibsqlStorage implements Storage {
   private client: Client;
 
   constructor(url: string, authToken?: string) {
-    ensureFileDir(url);
-    this.client = createClient(authToken ? { url, authToken } : { url });
+    const normalized = normalizeUrl(url);
+    ensureFileDir(normalized);
+    this.client = createClient(authToken ? { url: normalized, authToken } : { url: normalized });
   }
 
   async inspect(): Promise<DbInspection> {
@@ -233,6 +235,25 @@ export class LibsqlStorage implements Storage {
   }
 }
 
+/**
+ * Normalize a storage URL before passing it to libsql:
+ * - Bare paths (no scheme) are treated as `file:` URLs.
+ * - Leading `~` is expanded to the home directory in `file:` URLs.
+ */
+function normalizeUrl(url: string): string {
+  if (url === ":memory:") return url;
+  if (!url.includes("://") && !url.startsWith("file:")) {
+    url = "file:" + url;
+  }
+  if (url.startsWith("file:")) {
+    let path = url.slice("file:".length);
+    if (path.startsWith("//")) path = path.slice(2);
+    if (path.startsWith("~")) path = homedir() + path.slice(1);
+    return "file:" + path;
+  }
+  return url;
+}
+
 /** For a `file:` URL, make sure the parent directory exists before opening it. */
 function ensureFileDir(url: string): void {
   if (!url.startsWith("file:")) return;
@@ -243,4 +264,4 @@ function ensureFileDir(url: string): void {
   if (dir && dir !== ".") mkdirSync(dir, { recursive: true });
 }
 
-export { UNKNOWN_USER };
+export { UNKNOWN_USER, normalizeUrl };

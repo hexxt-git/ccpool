@@ -27,7 +27,7 @@ export function isTokenExpired(
 function parse(raw: string): Credentials {
   const j = JSON.parse(raw) as any;
   const o = j?.claudeAiOauth ?? j;
-  if (!o || typeof o.accessToken !== "string") {
+  if (!o || typeof o.accessToken !== "string" || o.accessToken.length === 0) {
     throw new Error("credentials JSON missing claudeAiOauth.accessToken");
   }
   return {
