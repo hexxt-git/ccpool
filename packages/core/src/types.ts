@@ -59,6 +59,25 @@ export interface MessageUsage {
   cacheReadTokens: number;
 }
 
+/**
+ * A daemon-emitted **activity marker**: this machine observed the tank rise while
+ * *its own* user was actively driving Claude Code, yet no transcript usage line
+ * landed in that interval. That gap is real local work whose token cost the
+ * transcript doesn't reflect in time — an endpoint-lagged tail of a heavy session,
+ * or a resume/compaction re-prime that rebuilds a cold cache. The marker lets
+ * attribution credit the otherwise-unexplained rise to that user instead of
+ * `unknown`, but only as a **fallback**: any real {@link MessageUsage} in the same
+ * interval always wins, so a marker can never dilute measured attribution (§7).
+ */
+export interface UsageMarker {
+  id: string; // PK; dedup key
+  user: string; // the active name on this machine when the rise was seen
+  at: string; // ISO 8601 — the sample instant the rise was observed (tick time)
+  model: string | null; // model of the recent local activity (for opus filtering)
+  /** Relative weight if two machines both mark the same empty interval. */
+  weight: number;
+}
+
 /** Per-name share of one window, apportioned across the header percentage. */
 export interface UserShare {
   user: string;
@@ -79,7 +98,16 @@ export interface Budget {
 /** Result of inspecting a target database before init. */
 export type DbInspection =
   | { kind: "empty" } // zero tables -> prompt to init
-  | { kind: "ccshare"; schemaVersion: number } // ours -> join (maybe migrate)
+  | {
+      kind: "ccshare"; // ours -> join (maybe migrate)
+      schemaVersion: number;
+      /**
+       * The Claude account this ledger is bound to (`oauthAccount.accountUuid`),
+       * or null when unbound (pre-v2 DB, or created before onboarding). A daemon
+       * observing a *different* account must not write here — see §1.5.
+       */
+      accountId: string | null;
+    }
   | { kind: "foreign" }; // has tables, not ours -> refuse
 
 // ── config ────────────────────────────────────────────────────────────────────
@@ -110,6 +138,12 @@ export interface LocalState {
   account: {
     id: string | null; // oauthAccount uuid/email, never the person
     tokenExpired: boolean;
+    /**
+     * True when this machine's Claude account differs from the account the shared
+     * DB is bound to. The daemon halts all ledger writes while this holds, and the
+     * views surface it — a mismatch would interleave two different tanks (§1.5).
+     */
+    conflict?: boolean;
   };
   samples: UsageSample[]; // latest per cap from this machine's poll
   daemon: {

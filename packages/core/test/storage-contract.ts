@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import type { Storage } from "../src/index.js";
+import { SCHEMA_VERSION, type DbInspection, type Storage } from "../src/index.js";
 
 /**
  * Shared Storage contract. Run against every adapter (memory, libsql, postgres)
@@ -39,6 +39,32 @@ export function runStorageContract(h: ContractHarness): void {
         await expect(s.initializeSchema()).rejects.toThrow();
       });
     }
+
+    it("binds the ledger to a Claude account and reports it", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema("acc-uuid-1");
+      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-uuid-1" });
+    });
+
+    it("leaves the ledger unbound with no account, then claims it once", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: null });
+
+      await s.bindAccount("acc-1");
+      expect(boundId(await s.inspect())).toBe("acc-1");
+
+      await s.bindAccount("acc-2"); // already bound -> must not clobber
+      expect(boundId(await s.inspect())).toBe("acc-1");
+    });
+
+    it("migrate is idempotent on the account-binding column", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema("acc-1");
+      // Column already exists on a fresh v2 DB; migrate must not throw or clobber it.
+      await s.migrate(SCHEMA_VERSION);
+      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-1" });
+    });
 
     it("upserts users idempotently", async () => {
       const s = await open(h.fresh());
@@ -114,6 +140,44 @@ export function runStorageContract(h: ContractHarness): void {
       expect(msgs.map((m) => m.uuid).sort()).toEqual(["a"]);
     });
 
+    it("records activity markers, dedups on id, and filters by cutoff", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      const m = {
+        id: "m1",
+        user: "sam",
+        at: "2026-06-29T12:00:00.000Z",
+        model: "claude-opus-4-8",
+        weight: 7,
+      };
+      await s.recordUsageMarker(m);
+      await s.recordUsageMarker({ ...m, weight: 999 }); // same id -> ignored
+      await s.recordUsageMarker({
+        id: "m0",
+        user: "alex",
+        at: "2026-06-28T12:00:00.000Z", // before cutoff
+        model: null,
+        weight: 3,
+      });
+      const markers = await s.getUsageMarkersSince("2026-06-29T00:00:00.000Z");
+      expect(markers).toHaveLength(1);
+      expect(markers[0]).toEqual(m);
+    });
+
+    it("migrate is idempotent on the activity-markers table", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      await s.migrate(SCHEMA_VERSION); // table already exists on a fresh v3 DB
+      await s.recordUsageMarker({
+        id: "x",
+        user: "sam",
+        at: "2026-06-29T12:00:00.000Z",
+        model: null,
+        weight: 1,
+      });
+      expect(await s.getUsageMarkersSince("2026-06-29T00:00:00.000Z")).toHaveLength(1);
+    });
+
     it("returns recorded resets since a cutoff", async () => {
       const s = await open(h.fresh());
       await s.initializeSchema();
@@ -134,6 +198,10 @@ export function runStorageContract(h: ContractHarness): void {
       expect(budgets).toEqual([{ name: "sam", cap: "seven_day", sharePct: 40 }]);
     });
   });
+}
+
+function boundId(i: DbInspection): string | null {
+  return i.kind === "ccshare" ? i.accountId : null;
 }
 
 function mkMsg(uuid: string, user: string, tokens: number, timestamp = "2026-06-29T12:00:00.000Z") {

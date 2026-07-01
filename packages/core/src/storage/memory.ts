@@ -4,6 +4,7 @@ import type {
   DbInspection,
   MessageUsage,
   ResetEvent,
+  UsageMarker,
   User,
   UsageSample,
 } from "../types.js";
@@ -20,11 +21,14 @@ export class MemoryStorage implements Storage {
   /** Simulate a database that already contains another project's tables. */
   private foreign: boolean;
   private schemaVersion = SCHEMA_VERSION;
+  /** The Claude account this ledger is bound to (§1.5), or null when unbound. */
+  private accountId: string | null = null;
 
   private users = new Map<string, User>();
   private samples: UsageSample[] = [];
   private resets: ResetEvent[] = [];
   private messages = new Map<string, MessageUsage>();
+  private markers = new Map<string, UsageMarker>();
   private budgets = new Map<string, Budget>();
 
   constructor(opts: { foreign?: boolean } = {}) {
@@ -32,15 +36,21 @@ export class MemoryStorage implements Storage {
   }
 
   async inspect(): Promise<DbInspection> {
-    if (this.initialized) return { kind: "ccshare", schemaVersion: this.schemaVersion };
+    if (this.initialized)
+      return { kind: "ccshare", schemaVersion: this.schemaVersion, accountId: this.accountId };
     if (this.foreign) return { kind: "foreign" };
     return { kind: "empty" };
   }
 
-  async initializeSchema(): Promise<void> {
+  async initializeSchema(accountId: string | null = null): Promise<void> {
     if (this.foreign) throw new Error("refusing to initialize over a foreign database");
     this.initialized = true;
     this.schemaVersion = SCHEMA_VERSION;
+    this.accountId = accountId;
+  }
+
+  async bindAccount(accountId: string): Promise<void> {
+    if (this.accountId == null) this.accountId = accountId; // claim only when unbound
   }
 
   async migrate(toVersion: number): Promise<void> {
@@ -95,6 +105,14 @@ export class MemoryStorage implements Storage {
 
   async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
     return [...this.messages.values()].filter((m) => m.timestamp >= since);
+  }
+
+  async recordUsageMarker(m: UsageMarker): Promise<void> {
+    if (!this.markers.has(m.id)) this.markers.set(m.id, m); // idempotent on id
+  }
+
+  async getUsageMarkersSince(since: string): Promise<UsageMarker[]> {
+    return [...this.markers.values()].filter((m) => m.at >= since);
   }
 
   async setBudget(name: string, cap: CapKind, sharePct: number): Promise<void> {

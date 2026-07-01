@@ -39,7 +39,9 @@ export function parseLine(line: string, user: string): MessageUsage | null {
 }
 
 function num(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+  // Clamp to >= 0: a negative token count is nonsense (corrupt/adversarial JSONL)
+  // and would flip signs in the weighted attribution split (shares.ts).
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

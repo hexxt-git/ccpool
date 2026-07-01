@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MemoryStorage, type LocalState } from "@ccshare/core";
+import { MemoryStorage, SCHEMA_VERSION, type LocalState } from "@ccshare/core";
 import { Daemon, type DaemonDeps } from "../src/daemon.js";
 import { acquireLock, AlreadyRunningError, daemonPaths } from "../src/lifecycle.js";
 
@@ -78,7 +78,7 @@ describe("Daemon.tick", () => {
 
     expect((await h.storage.getLatestSamples()).find((s) => s.cap === "five_hour")?.pct).toBe(42);
     const state = readState(h.stateFile);
-    expect(state.account).toEqual({ id: "acc-1", tokenExpired: false });
+    expect(state.account).toEqual({ id: "acc-1", tokenExpired: false, conflict: false });
     expect(state.samples.map((s) => s.cap)).toEqual(["five_hour", "seven_day"]);
   });
 
@@ -99,6 +99,151 @@ describe("Daemon.tick", () => {
     await new Daemon(h.deps).tick();
     expect(h.fetchCalls()).toBe(0);
     expect(readState(h.stateFile).account.tokenExpired).toBe(true);
+  });
+});
+
+/** Reach the private startup step that reads the DB's bound account. */
+async function loadBinding(daemon: Daemon): Promise<void> {
+  await (daemon as unknown as { loadBoundAccount(): Promise<void> }).loadBoundAccount();
+}
+
+/** Reach the private startup step that heals the schema. */
+async function healSchema(daemon: Daemon): Promise<void> {
+  await (daemon as unknown as { ensureSchemaCurrent(): Promise<void> }).ensureSchemaCurrent();
+}
+
+describe("Daemon schema auto-migration", () => {
+  it("migrates an out-of-date shared DB forward on startup", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-1");
+    await h.storage.migrate(SCHEMA_VERSION - 1); // pretend an older CLI created it
+    const spy = vi.spyOn(h.storage, "migrate");
+
+    await healSchema(new Daemon(h.deps));
+
+    expect(spy).toHaveBeenCalledWith(SCHEMA_VERSION);
+    const info = await h.storage.inspect();
+    expect(info.kind === "ccshare" && info.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("does not migrate a current DB", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-1");
+    const spy = vi.spyOn(h.storage, "migrate");
+    await healSchema(new Daemon(h.deps));
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("Daemon account-conflict guard", () => {
+  it("halts ledger writes when the local account differs from the DB's binding", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-OTHER"); // ledger bound to a different account
+    const daemon = new Daemon(h.deps); // local account is acc-1 (from .claude.json)
+    await loadBinding(daemon);
+    await daemon.tick();
+
+    expect(h.fetchCalls()).toBe(1); // still polls (local view)
+    expect(await h.storage.getLatestSamples()).toHaveLength(0); // but records nothing
+    const state = readState(h.stateFile);
+    expect(state.account.conflict).toBe(true);
+    expect(state.samples.map((s) => s.cap)).toEqual(["five_hour"]); // local state still shown
+  });
+
+  it("does not ingest measured messages during a conflict", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-OTHER");
+    const spy = vi.spyOn(h.storage, "recordMessageUsage");
+    const daemon = new Daemon(h.deps);
+    await loadBinding(daemon);
+    await daemon.tick();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("writes normally when the local account matches the binding", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-1"); // matches .claude.json
+    const daemon = new Daemon(h.deps);
+    await loadBinding(daemon);
+    await daemon.tick();
+
+    expect(await h.storage.getLatestSamples()).toHaveLength(1);
+    expect(readState(h.stateFile).account.conflict).toBe(false);
+  });
+
+  it("does not enforce against an unbound ledger", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema(); // unbound (accountId null)
+    const daemon = new Daemon(h.deps);
+    await loadBinding(daemon);
+    await daemon.tick();
+
+    expect(await h.storage.getLatestSamples()).toHaveLength(1);
+    expect(readState(h.stateFile).account.conflict).toBe(false);
+  });
+});
+
+describe("Daemon activity markers", () => {
+  /** Write one usage-bearing assistant transcript line under projects/. */
+  function writeTranscript(configDir: string, timestamp: string): void {
+    const proj = join(configDir, "projects", "p");
+    mkdirSync(proj, { recursive: true });
+    writeFileSync(
+      join(proj, "s.jsonl"),
+      JSON.stringify({
+        type: "assistant",
+        requestId: "req-1",
+        timestamp,
+        message: {
+          model: "claude-opus-4-8",
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 3,
+            cache_read_input_tokens: 4,
+          },
+        },
+      }) + "\n"
+    );
+  }
+
+  it("marks an unexplained local rise as the recently-active user's usage", async () => {
+    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const daemon = new Daemon(h.deps);
+    await daemon.tick(); // baselines the reader + records 40%
+
+    // a message lands on this machine (recent local Code activity)
+    writeTranscript(h.configDir, new Date(NOW).toISOString());
+    await daemon.tick(); // ingests it; tank still 40% -> no marker
+
+    // the tank now rises with no new transcript activity to explain it
+    h.setBody({ five_hour: { utilization: 55, resets_at: null } });
+    await daemon.tick(); // +15 rise, no in-interval message -> activity marker
+
+    const markers = await h.storage.getUsageMarkersSince(new Date(NOW - 3_600_000).toISOString());
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.user).toBe("sam");
+    expect(markers[0]?.model).toBe("claude-opus-4-8");
+  });
+
+  it("leaves a rise as unknown when the machine has had no recent activity", async () => {
+    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const daemon = new Daemon(h.deps);
+    await daemon.tick(); // baseline, 40%
+    h.setBody({ five_hour: { utilization: 55, resets_at: null } });
+    await daemon.tick(); // rise, but this machine never produced activity -> no marker
+    expect(await h.storage.getUsageMarkersSince(new Date(0).toISOString())).toHaveLength(0);
+  });
+
+  it("does not mark when a message already covers the rise", async () => {
+    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const daemon = new Daemon(h.deps);
+    await daemon.tick(); // baseline
+    // activity and the rise land in the same tick -> the message covers it
+    writeTranscript(h.configDir, new Date(NOW).toISOString());
+    h.setBody({ five_hour: { utilization: 55, resets_at: null } });
+    await daemon.tick();
+    expect(await h.storage.getUsageMarkersSince(new Date(0).toISOString())).toHaveLength(0);
   });
 });
 

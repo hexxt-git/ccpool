@@ -32,6 +32,8 @@ export interface ViewModel {
   stale: boolean;
   daemonRunning: boolean;
   tokenExpired: boolean;
+  /** This machine's Claude account differs from the DB's — daemon halted writes (§1.5). */
+  accountConflict: boolean;
   /** The observed account's id/email (never the person), from local state. */
   account: string | null;
   updatedAt: string | null;
@@ -92,16 +94,17 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     const now = Date.now();
     // pull enough history to cover the widest window, then attribute deltas
     const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-    const [latest, samplesSince, messagesSince, resetsSince, b] = await Promise.all([
+    const [latest, samplesSince, messagesSince, resetsSince, markersSince, b] = await Promise.all([
       storage.getLatestSamples(),
       storage.getUsageSamplesSince(since),
       storage.getMessageUsageSince(since),
       storage.getResetsSince(since),
+      storage.getUsageMarkersSince(since),
       storage.getBudgets(),
     ]);
     dbSamples = latest;
     budgets = b;
-    shares = attributeShares(samplesSince, messagesSince, now, resetsSince);
+    shares = attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince);
     members = summarizeMembers(messagesSince);
   } catch {
     stale = true;
@@ -133,6 +136,7 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     stale,
     daemonRunning,
     tokenExpired: state?.account.tokenExpired ?? false,
+    accountConflict: state?.account.conflict ?? false,
     account,
     updatedAt: state?.updatedAt ?? null,
   };

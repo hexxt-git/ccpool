@@ -7,6 +7,11 @@ const DEFAULT_EPSILON = 0.5;
  * Detect resets by comparing the latest reading to the previous one: a cap whose
  * `pct` dropped is a reset (covers Anthropic's out-of-band mid-week flushes). We
  * never infer a reset from `resetsAt` elapsing — that field lies (§8).
+ *
+ * Known tradeoff: a downward *re-computation* of utilization by more than `epsilon`
+ * (not an actual reset) would also register here, truncating the attribution window
+ * a cycle early. `epsilon` only filters sub-point wobble; genuine large corrections
+ * are rare, and pct-drop remains far more reliable than the `resetsAt` clock.
  */
 export function detectResets(
   prev: UsageSample[],

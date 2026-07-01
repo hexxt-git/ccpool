@@ -105,6 +105,12 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
   });
 
   const notes: string[] = [];
+  // Loudest first: a mismatched account means the ledger is NOT recording this
+  // machine — everything below reflects only the local poll, not the shared group.
+  if (vm.accountConflict)
+    notes.push(
+      "account mismatch — this machine's Claude account differs from the shared DB's; not recording to the ledger"
+    );
   if (vm.tokenExpired) notes.push("waiting for Claude Code to refresh auth");
   if (!vm.daemonRunning) notes.push("daemon not running — run `ccshare daemon start`");
   if (vm.stale) notes.push("database unreachable — showing last-known");

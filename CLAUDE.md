@@ -75,13 +75,47 @@ an adapter. A shared contract suite (`packages/core/test/storage-contract.ts`) r
 against memory, libSQL, and Postgres; passing it is what proves swappability and the
 clean-DB rules.
 
+### Schema changes require a versioned migration (do this every time)
+
+**Any new feature or conflict-guard that touches the DB — a new column, table, or
+`ccshare_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
+edit.** For each such change:
+
+1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document what
+   the new version adds (see the v2 note there).
+2. Add the columns/tables to the fresh `initializeSchema` of **all three** adapters
+   (memory, libSQL, Postgres).
+3. Extend `migrate(toVersion)` in each adapter to bring an older DB forward
+   **idempotently and additively** (nullable columns; `ADD COLUMN IF NOT EXISTS` /
+   probe-then-`ALTER`), so it's forward- and multi-machine-safe. Never a destructive
+   migration on a shared DB.
+4. The daemon auto-migrates on startup (`ensureSchemaCurrent`) and `init` migrates on
+   join — so users never re-run anything after an update. Keep it that way.
+5. Cover it in the storage contract suite so every adapter is proven.
+
+Migrations must stay backward-compatible: an older CLI still reads/writes a newer DB
+(inspect uses `SELECT *`, writers only touch known columns). Don't make a new schema
+version refuse older clients.
+
+### Design system
+
+strictly follow ./docs/DESIGN.md
+
 ### Attribution lives in core, not storage
 
 The per-person split is **delta-based time correlation** in
 `packages/core/src/state/shares.ts#attributeShares`. Storage only exposes raw
-`getUsageSamplesSince` (the tank trajectory) and `getMessageUsageSince` (everyone's
-measured activity); the pure `attributeShares` function correlates tank _rises_ with
-the Code activity in the same interval.
+`getUsageSamplesSince` (the tank trajectory), `getMessageUsageSince` (everyone's
+measured activity), and `getUsageMarkersSince` (daemon activity markers); the pure
+`attributeShares` function correlates tank _rises_ with the Code activity in the same
+interval.
+
+A rise with no measured message in its interval normally falls to `unknown`. The one
+exception is a **`UsageMarker`**: the daemon records one when it observes a local rise
+with no in-interval message _while this machine's user was driving Code moments ago_
+(an endpoint-lagged tail, or a resume/compaction re-prime the transcript
+under-reports). Markers are a **strict fallback** — a real message in the interval
+always wins, so they can never dilute measured attribution. See ALGORITHM.md §7.
 
 > Do **not** revert to apportioning the _current_ tank by token weight. That was the
 > original bug: a single message made a user absorb 100% of the tank, including
@@ -109,3 +143,8 @@ the Code activity in the same interval.
 - **`init` never writes into a foreign database.** Inspection classifies the target
   as `empty` / `ccshare` / `foreign`; only `empty` (after confirmation) or `ccshare`
   are written to.
+- **One ledger, one account.** `ccshare_meta.accountId` binds the DB to a Claude
+  `accountUuid` (the UUID, never the email). `init` refuses a ccshare DB bound to a
+  different account; a running daemon halts all ledger writes on a mismatch and flags
+  `state.json`'s `account.conflict`. Only a hydrated account binds; unbound ledgers
+  are claimed one-way (`null → accountUuid`). See ALGORITHM.md §1.5.

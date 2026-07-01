@@ -5,6 +5,8 @@ import type { LocalState, UsageSample } from "../types.js";
 export interface SnapshotInput {
   accountId: string | null;
   tokenExpired: boolean;
+  /** This machine's Claude account differs from the DB's bound account (§1.5). */
+  accountConflict?: boolean;
   samples: UsageSample[];
   pid: number;
   startedAt: string;
@@ -15,7 +17,11 @@ export interface SnapshotInput {
 export function buildLocalState(input: SnapshotInput): LocalState {
   return {
     updatedAt: input.now ?? new Date().toISOString(),
-    account: { id: input.accountId, tokenExpired: input.tokenExpired },
+    account: {
+      id: input.accountId,
+      tokenExpired: input.tokenExpired,
+      conflict: input.accountConflict ?? false,
+    },
     samples: input.samples,
     daemon: { pid: input.pid, startedAt: input.startedAt },
   };

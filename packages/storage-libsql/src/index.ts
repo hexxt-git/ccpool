@@ -12,6 +12,7 @@ import {
   type MessageUsage,
   type ResetEvent,
   type Storage,
+  type UsageMarker,
   type UsageSample,
   type User,
 } from "@ccshare/core";
@@ -40,14 +41,20 @@ export class LibsqlStorage implements Storage {
     const tables = new Set(rows.map((r) => String(r.name)));
     if (tables.size === 0) return { kind: "empty" };
     if (tables.has("ccshare_meta")) {
-      const meta = await this.client.execute("SELECT schemaVersion FROM ccshare_meta LIMIT 1");
-      const v = meta.rows[0]?.schemaVersion;
-      return { kind: "ccshare", schemaVersion: Number(v ?? SCHEMA_VERSION) };
+      // SELECT * (not a named column) so a pre-v2 DB lacking `accountId` still
+      // reads — the missing column simply comes back undefined, not an error.
+      const meta = await this.client.execute("SELECT * FROM ccshare_meta LIMIT 1");
+      const row = meta.rows[0];
+      return {
+        kind: "ccshare",
+        schemaVersion: Number(row?.schemaVersion ?? SCHEMA_VERSION),
+        accountId: row?.accountId == null ? null : String(row.accountId),
+      };
     }
     return { kind: "foreign" };
   }
 
-  async initializeSchema(): Promise<void> {
+  async initializeSchema(accountId: string | null = null): Promise<void> {
     const inspection = await this.inspect();
     if (inspection.kind === "foreign") {
       throw new Error("refusing to initialize schema over a foreign database");
@@ -58,7 +65,8 @@ export class LibsqlStorage implements Storage {
            app TEXT NOT NULL,
            schemaVersion INTEGER NOT NULL,
            projectId TEXT NOT NULL,
-           createdAt TEXT NOT NULL
+           createdAt TEXT NOT NULL,
+           accountId TEXT
          )`,
         `CREATE TABLE IF NOT EXISTS users (
            name TEXT PRIMARY KEY,
@@ -82,6 +90,14 @@ export class LibsqlStorage implements Storage {
            cacheReadTokens INTEGER NOT NULL
          )`,
         `CREATE INDEX IF NOT EXISTS idx_message_usage_ts ON message_usage (timestamp)`,
+        `CREATE TABLE IF NOT EXISTS usage_markers (
+           id TEXT PRIMARY KEY,
+           user TEXT NOT NULL,
+           at TEXT NOT NULL,
+           model TEXT,
+           weight REAL NOT NULL
+         )`,
+        `CREATE INDEX IF NOT EXISTS idx_usage_markers_at ON usage_markers (at)`,
         `CREATE TABLE IF NOT EXISTS reset_events (
            cap TEXT NOT NULL,
            at TEXT NOT NULL,
@@ -94,17 +110,46 @@ export class LibsqlStorage implements Storage {
            PRIMARY KEY (name, cap)
          )`,
         {
-          sql: `INSERT INTO ccshare_meta (app, schemaVersion, projectId, createdAt)
-                VALUES ('ccshare', ?, ?, ?)`,
-          args: [SCHEMA_VERSION, randomUUID(), new Date().toISOString()],
+          sql: `INSERT INTO ccshare_meta (app, schemaVersion, projectId, createdAt, accountId)
+                VALUES ('ccshare', ?, ?, ?, ?)`,
+          args: [SCHEMA_VERSION, randomUUID(), new Date().toISOString(), accountId],
         },
       ],
       "write"
     );
   }
 
+  async bindAccount(accountId: string): Promise<void> {
+    // Claim only when currently unbound, so we never overwrite an existing binding.
+    await this.client.execute({
+      sql: "UPDATE ccshare_meta SET accountId = ? WHERE accountId IS NULL",
+      args: [accountId],
+    });
+  }
+
   async migrate(toVersion: number): Promise<void> {
-    // Only v1 exists today; future migrations branch on the current version here.
+    // v1 -> v2: add the account-binding column (SQLite has no ADD COLUMN IF NOT
+    // EXISTS, so probe the table first to stay idempotent).
+    const info = await this.client.execute("PRAGMA table_info(ccshare_meta)");
+    const hasAccountId = info.rows.some((r) => String(r.name) === "accountId");
+    if (!hasAccountId) {
+      await this.client.execute("ALTER TABLE ccshare_meta ADD COLUMN accountId TEXT");
+    }
+    // v2 -> v3: add the activity-markers table (CREATE ... IF NOT EXISTS is
+    // idempotent, so re-running on a fresh v3 DB is a no-op).
+    await this.client.batch(
+      [
+        `CREATE TABLE IF NOT EXISTS usage_markers (
+           id TEXT PRIMARY KEY,
+           user TEXT NOT NULL,
+           at TEXT NOT NULL,
+           model TEXT,
+           weight REAL NOT NULL
+         )`,
+        `CREATE INDEX IF NOT EXISTS idx_usage_markers_at ON usage_markers (at)`,
+      ],
+      "write"
+    );
     await this.client.execute({
       sql: "UPDATE ccshare_meta SET schemaVersion = ?",
       args: [toVersion],
@@ -224,6 +269,29 @@ export class LibsqlStorage implements Storage {
       outputTokens: Number(r.outputTokens),
       cacheCreationTokens: Number(r.cacheCreationTokens),
       cacheReadTokens: Number(r.cacheReadTokens),
+    }));
+  }
+
+  async recordUsageMarker(m: UsageMarker): Promise<void> {
+    await this.client.execute({
+      sql: `INSERT INTO usage_markers (id, user, at, model, weight)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING`,
+      args: [m.id, m.user, m.at, m.model, m.weight] satisfies InValue[],
+    });
+  }
+
+  async getUsageMarkersSince(since: string): Promise<UsageMarker[]> {
+    const { rows } = await this.client.execute({
+      sql: `SELECT id, user, at, model, weight FROM usage_markers WHERE at >= ?`,
+      args: [since],
+    });
+    return rows.map((r) => ({
+      id: String(r.id),
+      user: String(r.user),
+      at: String(r.at),
+      model: r.model == null ? null : String(r.model),
+      weight: Number(r.weight),
     }));
   }
 

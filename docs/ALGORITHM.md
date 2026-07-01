@@ -116,6 +116,35 @@ person is just a name in ccshare's own config. The views also read
 `oauthAccount.emailAddress` from the same file to show a human-readable account
 label, cached ~once a minute since it barely changes (§8).
 
+### 1.5 Account binding — one ledger, one account
+
+The whole design rests on **every machine sharing one login** (§0): each poll
+returns the _same_ account-wide tank, so the samples in the DB form a single
+coherent trajectory. If two machines signed into **different** Claude accounts wrote
+to the same ledger, `usage_samples` would interleave two unrelated tanks — the
+attribution baseline (`win[0].pct`), the target (`win[last].pct`), and reset
+detection would all read garbage. Nothing about a random `projectId` catches that.
+
+So the ledger is **bound to an account**. `ccshare_meta.accountId` records the
+`accountUuid` (schema v2) — the **UUID, never the email** (email is only a display
+label, and can even be absent). The binding is enforced at two points:
+
+- **`init`** resolves the local `accountUuid`. On an _empty_ DB it writes the binding
+  at creation. On an existing _ccshare_ DB it **refuses** (like `foreign`) when the
+  DB's bound account differs from the local one, before any migrate or write. A DB
+  that is still _unbound_ (pre-v2, or created before onboarding) is **claimed** for
+  the local account on join.
+- **The daemon** reads the binding once at startup. Every tick it compares the freshly
+  resolved local account; on a mismatch it **halts all ledger writes** (samples,
+  resets, messages) and flags `account.conflict` in `state.json`, which the views
+  surface as the loudest footnote. It still polls, so the local user keeps seeing
+  _their own_ tank — the shared ledger just stays clean.
+
+Only a **hydrated** (onboarded) account has a real `accountUuid`; an unhydrated local
+account (the `user-<hash>` fallback) never triggers a conflict and never binds — the
+binding is claimed later, one-way (`null → accountUuid`), so onboarding can't trip a
+false mismatch.
+
 ---
 
 ## 2. Polling the tank
@@ -337,6 +366,11 @@ async tick(): Promise<{ pollFailed: boolean }> {
   const rows = await this.reader.collectNew(await this.currentName());
   if (rows.length) await storage.recordMessageUsage(rows);
 
+  // a tank rise this tick with no message, but this machine was driving Code in the
+  // last few minutes → record an activity marker so the rise isn't lost to unknown (§7)
+  if (!rows.length && caps rose && recent local activity)
+    await storage.recordUsageMarker({ user, at: nowIso, model, weight });
+
   await atomicWriteJson(paths.stateFile, buildLocalState({
     accountId: account?.id ?? null, tokenExpired, samples,
     pid: process.pid, startedAt: this.startedAt, now: nowIso,
@@ -352,6 +386,11 @@ Two details worth noting:
 - `currentName()` is resolved **fresh each tick** (re-reads config), so handing the
   machine to another person with `ccshare config set name alex` takes effect
   without restarting the daemon.
+- An **activity marker** is written only when the tank rose but no message was
+  ingested this tick _and_ this machine produced Code activity within the last few
+  minutes — the daemon's local view of a lagged/uncaptured rise it can honestly
+  claim for its user (§7). It's skipped on an account conflict, like every other
+  ledger write (§1.5).
 
 ### The run loop — jitter and backoff
 
@@ -423,7 +462,9 @@ caused them:
    far in the window). For each step, the rise `Δ = newMax − oldMax` is the genuine
    new-high; look at the Code activity whose timestamp falls in that interval:
    - activity present → split `Δ` across those users by token weight;
-   - none → the whole `Δ` is `unknown` (mobile / web / chat, or daemon was down).
+   - none → the whole `Δ` is `unknown` (mobile / web / chat, or daemon was down) —
+     _unless_ a machine left an **activity marker** for that interval (a lagged or
+     uncaptured local rise), which claims it for that user instead (see below).
      A reading that **dips** below the running max (clock-skew reorder across machines,
      or sub-point float wobble) is a new-high of zero — it neither inflates the active
      user nor discards their interval.
@@ -452,6 +493,7 @@ for (let i = 1; i < win.length; i++) {
     weights.set(m.user, (weights.get(m.user) ?? 0) + m.w);
     total += m.w;
   }
+  // …and this interval's activity markers into markerWeights/markerTotal the same way
 
   const newMax = Math.max(envMax, cur.pct);
   const delta = newMax - envMax; envMax = newMax;    // rise off the running max
@@ -459,7 +501,10 @@ for (let i = 1; i < win.length; i++) {
 
   if (total > 0) {                                   // 2b. split the rise by weight
     for (const [u, w] of weights) attributed.set(u, (attributed.get(u) ?? 0) + delta * w / total);
-  } else {                                           // 2c. nobody active → unknown
+  } else if (markerTotal > 0) {                       // 2c. no message, but a machine
+    for (const [u, w] of markerWeights)               //     flagged local Code was active
+      attributed.set(u, (attributed.get(u) ?? 0) + delta * w / markerTotal);
+  } else {                                           // 2d. nobody active → unknown
     attributed.set(UNKNOWN_USER, (attributed.get(UNKNOWN_USER) ?? 0) + delta);
   }
 }
@@ -527,11 +572,39 @@ participant — on any machine — was active in that interval. Activity from a 
 whose daemon was down simply isn't in the DB, so that interval's rise falls to
 `unknown`.
 
+### Activity markers — reclaiming lagged / uncaptured local rises
+
+One case the pure delta-vs-message correlation gets wrong: **real Code usage whose
+token cost lands on the tank without a matching transcript line in that interval.**
+The usage endpoint can report a heavy session's cost a tick or two _after_ its last
+transcript line (an endpoint-lagged tail), and a **resume / compaction re-prime**
+rebuilds a cold prompt cache — billed to the account, but under-reported (or absent)
+in the transcript at the moment the tank moves. Both leave a genuine local rise in an
+interval with no measured message, so the base algorithm dumps it on `unknown`.
+
+The only observer that can tell this apart from real mobile/web/chat usage is the
+**local daemon**: it alone knows _this machine's_ user was driving Code seconds ago.
+So each tick, if a cap rose but **no message was ingested that tick** _and_ this
+machine produced Code activity within the last few minutes (`MARKER_ACTIVITY_WINDOW_MS`,
+3 min), the daemon records a **`UsageMarker`** — `{ user, at, model, weight }` — for
+its current user, stamped at the instant it _observed_ the rise (so the marker lands
+in the same sample interval, side-stepping the transcript's lag).
+
+Attribution treats markers as a strict **fallback**: an interval with any real message
+splits by measured weight as before; only a genuinely message-less rise consults its
+markers (§2c). So a marker can never dilute measured attribution, and a rise more than
+a few minutes after the machine went quiet still falls to `unknown` — the conservative
+bias, so an idle machine never claims someone else's mobile usage. On a shared account
+this stays honest: another machine's own daemon marks (or measures) its own activity,
+and two machines contesting the same empty interval split it by marker weight.
+
 It remains an **estimate**: the inter-user weight is the reliable signal
 (`cache_read + cache_creation + output`; `input_tokens` is left out because it
-undercounts and isn't comparable between users), and Code + chat happening in the
+undercounts and isn't comparable between users); Code + chat happening in the
 _same ~60s interval_ can't be perfectly separated (that sliver attaches to the active
-user). It's bounded by the interval's delta — a world better than the whole tank.
+user); and an **activity marker** is a best-effort call that a message-less local rise
+was the recently-active user's overhead rather than mobile/web. Every case is bounded
+by the interval's delta — a world better than the whole tank.
 
 ---
 
@@ -545,14 +618,17 @@ before the daemon's first write:
 ```ts
 // apps/cli/src/lib/view.ts  (abridged)
 const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-const [latest, samplesSince, messagesSince, resetsSince, budgets] = await Promise.all([
-  storage.getLatestSamples(), // the header bars
-  storage.getUsageSamplesSince(since), // the trajectory, for attribution
-  storage.getMessageUsageSince(since), // everyone's measured activity
-  storage.getResetsSince(since), // reset events bound the window (§7)
-  storage.getBudgets(),
-]);
-const shares = attributeShares(samplesSince, messagesSince, now, resetsSince); // §7 — the split
+const [latest, samplesSince, messagesSince, resetsSince, markersSince, budgets] = await Promise.all(
+  [
+    storage.getLatestSamples(), // the header bars
+    storage.getUsageSamplesSince(since), // the trajectory, for attribution
+    storage.getMessageUsageSince(since), // everyone's measured activity
+    storage.getResetsSince(since), // reset events bound the window (§7)
+    storage.getUsageMarkersSince(since), // daemon activity markers (§7 fallback)
+    storage.getBudgets(),
+  ]
+);
+const shares = attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince); // §7
 const members = summarizeMembers(messagesSince); // per-name token totals + last-seen
 const account = await resolveEmail(configDir); // oauthAccount.emailAddress, cached ~1/min
 
@@ -642,6 +718,8 @@ interface Storage {
   getResetsSince(since): Promise<ResetEvent[]>; // window bounds for attribution
   recordMessageUsage(rows): Promise<void>; // idempotent on uuid
   getMessageUsageSince(since): Promise<MessageUsage[]>;
+  recordUsageMarker(m): Promise<void>; // idempotent on id (§7 activity markers)
+  getUsageMarkersSince(since): Promise<UsageMarker[]>;
   setBudget(name, cap, pct);
   getBudgets();
   upsertUser(name);
@@ -661,14 +739,17 @@ the target three ways and the CLI branches on it:
 ```ts
 type DbInspection =
   | { kind: "empty" } // no tables  → prompt, then create
-  | { kind: "ccshare"; schemaVersion: number } // our marker → join (maybe migrate)
+  | { kind: "ccshare"; schemaVersion: number; accountId: string | null } // ours → join
   | { kind: "foreign" }; // other tables → refuse
 ```
 
 The marker is a `ccshare_meta` table holding `app='ccshare'`, `schemaVersion`, a
-`projectId`, and `createdAt`. Init only creates tables on `empty` (after explicit
-confirmation), only joins on `ccshare`, and **never** writes alongside a `foreign`
-schema.
+`projectId`, `createdAt`, and (schema v2) the bound `accountId` (§1.5). Init only
+creates tables on `empty` (after explicit confirmation), only joins on `ccshare` —
+and then only when the bound account matches (or is still null) — and **never**
+writes alongside a `foreign` schema. `inspect` reads `ccshare_meta` with `SELECT *`
+so a pre-v2 DB without the `accountId` column still reads (the missing column comes
+back as `null`, i.e. unbound), and `migrate` adds the column idempotently.
 
 ---
 
@@ -698,10 +779,10 @@ const over = budget !== undefined && pct > budget + 0.5; // ▲ over · within
   `isValidName` also **reserves `unknown`** (case-insensitive): a person can't
   register as the bucket below, or their share would silently merge into it.
 - **`unknown`** is a normal, always-listed row. It receives: activity ingested with
-  no/invalid name, tank rises during intervals with no measured Code activity
-  (chat/mobile/web, or daemon down), the pre-daemon baseline, and normalization
-  remainder. This is what keeps measured users from claiming usage they didn't
-  cause.
+  no/invalid name, tank rises during intervals with no measured Code activity _and no
+  local activity marker_ (chat/mobile/web, or daemon down), the pre-daemon baseline,
+  and normalization remainder. This is what keeps measured users from claiming usage
+  they didn't cause.
 
 ---
 
@@ -722,22 +803,28 @@ contract suite additionally runs against a real Postgres.
 
 ## Appendix — edge cases the algorithm bakes in
 
-| Situation                                 | Behavior                                                      |
-| ----------------------------------------- | ------------------------------------------------------------- |
-| Tank already high when daemon starts      | That level is `unknown`'s baseline (§7).                      |
-| Mobile / web / chat usage                 | Tank rises with no Code activity → `unknown` (§7).            |
-| Daemon was down during usage              | Those messages aren't in the DB → that rise → `unknown`.      |
-| Access token expired                      | Skip the poll; keep ingesting + writing state (§5).           |
-| 401 with a non-expired token (clock skew) | Treat like expiry; don't back off.                            |
-| Network error                             | Exponential backoff (cap 5m), jittered; ingest still runs.    |
-| Mid-week out-of-band reset                | Detected by pct-drop, never by `resets_at` (§3).              |
-| Same request logged on several lines      | Dedup by `requestId` so it's counted once (§4).               |
-| Partial trailing JSONL line               | Offset stops at the last newline; resumed next tick (§4).     |
-| Daemon restart                            | Re-baseline transcripts at EOF — no backfill (§4).            |
-| `weekly-opus` not on the plan (`null`)    | Skipped, not rendered as 0% (§2).                             |
-| Cap with a `NaN`/`Infinity` utilization   | Skipped like a `null` cap; never poisons the trajectory (§2). |
-| Two people, one machine                   | Hand off with `config set name`; applied next tick (§11).     |
-| DB unreachable mid-run                    | Serve last-known from `state.json` with a stale badge (§8).   |
+| Situation                                  | Behavior                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Tank already high when daemon starts       | That level is `unknown`'s baseline (§7).                                              |
+| Mobile / web / chat usage                  | Tank rises with no Code activity → `unknown` (§7).                                    |
+| Daemon was down during usage               | Those messages aren't in the DB → that rise → `unknown`.                              |
+| Resume/compaction re-prime or lagged tail  | Local rise with no in-interval message → daemon marks it for its recent user (§7).    |
+| Access token expired                       | Skip the poll; keep ingesting + writing state (§5).                                   |
+| 401 with a non-expired token (clock skew)  | Treat like expiry; don't back off.                                                    |
+| Network error                              | Exponential backoff (cap 5m), jittered; ingest still runs.                            |
+| Mid-week out-of-band reset                 | Detected by pct-drop, never by `resets_at` (§3).                                      |
+| Same request logged on several lines       | Dedup by `requestId` so it's counted once (§4).                                       |
+| Partial trailing JSONL line                | Offset stops at the last newline; resumed next tick (§4).                             |
+| Daemon restart                             | Re-baseline transcripts at EOF — no backfill (§4).                                    |
+| `weekly-opus` not on the plan (`null`)     | Skipped, not rendered as 0% (§2).                                                     |
+| Cap with a `NaN`/`Infinity` utilization    | Skipped like a `null` cap; never poisons the trajectory (§2).                         |
+| Two people, one machine                    | Hand off with `config set name`; applied next tick (§11).                             |
+| DB unreachable mid-run                     | Serve last-known from `state.json` with a stale badge (§8).                           |
+| Machine signed into a different account    | `init` refuses; a running daemon halts ledger writes + flags a conflict (§1.5).       |
+| Ledger created before onboarding (unbound) | Bound to the first hydrated account that joins; one-way (§1.5).                       |
+| Corrupt/negative token count in a line     | Clamped to 0 so it can't invert the weighted split (§4, §7).                          |
+| Message timestamped in the future          | Never matches an interval → its rise falls to `unknown` (§7).                         |
+| Downward pct correction (not a reset)      | May register as a reset above `epsilon`; rare, pct-drop still beats `resets_at` (§3). |
 
 ```
 

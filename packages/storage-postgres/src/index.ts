@@ -10,6 +10,7 @@ import {
   type MessageUsage,
   type ResetEvent,
   type Storage,
+  type UsageMarker,
   type UsageSample,
   type User,
 } from "@ccshare/core";
@@ -35,21 +36,27 @@ export class PostgresStorage implements Storage {
     const tables = new Set(rows.map((r) => r.table_name));
     if (tables.size === 0) return { kind: "empty" };
     if (tables.has("ccshare_meta")) {
-      const meta = await this.sql<{ schemaVersion: number }[]>`
-        SELECT "schemaVersion" FROM ccshare_meta LIMIT 1`;
-      return { kind: "ccshare", schemaVersion: Number(meta[0]?.schemaVersion ?? SCHEMA_VERSION) };
+      // SELECT * so a pre-v2 DB without `accountId` still reads (undefined key).
+      const meta = await this.sql<
+        { schemaVersion: number; accountId?: string | null }[]
+      >`SELECT * FROM ccshare_meta LIMIT 1`;
+      return {
+        kind: "ccshare",
+        schemaVersion: Number(meta[0]?.schemaVersion ?? SCHEMA_VERSION),
+        accountId: meta[0]?.accountId ?? null,
+      };
     }
     return { kind: "foreign" };
   }
 
-  async initializeSchema(): Promise<void> {
+  async initializeSchema(accountId: string | null = null): Promise<void> {
     if ((await this.inspect()).kind === "foreign") {
       throw new Error("refusing to initialize schema over a foreign database");
     }
     await this.sql.begin(async (tx) => {
       await tx`CREATE TABLE IF NOT EXISTS ccshare_meta (
         app TEXT NOT NULL, "schemaVersion" INTEGER NOT NULL,
-        "projectId" TEXT NOT NULL, "createdAt" TEXT NOT NULL)`;
+        "projectId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "accountId" TEXT)`;
       await tx`CREATE TABLE IF NOT EXISTS users (
         name TEXT PRIMARY KEY, "createdAt" TEXT NOT NULL)`;
       await tx`CREATE TABLE IF NOT EXISTS usage_samples (
@@ -63,17 +70,34 @@ export class PostgresStorage implements Storage {
         "cacheCreationTokens" BIGINT NOT NULL, "cacheReadTokens" BIGINT NOT NULL)`;
       await tx`CREATE INDEX IF NOT EXISTS idx_message_usage_ts
         ON message_usage (timestamp)`;
+      await tx`CREATE TABLE IF NOT EXISTS usage_markers (
+        id TEXT PRIMARY KEY, "user" TEXT NOT NULL, at TEXT NOT NULL, model TEXT,
+        weight DOUBLE PRECISION NOT NULL)`;
+      await tx`CREATE INDEX IF NOT EXISTS idx_usage_markers_at
+        ON usage_markers (at)`;
       await tx`CREATE TABLE IF NOT EXISTS reset_events (
         cap TEXT NOT NULL, at TEXT NOT NULL, "previousPct" DOUBLE PRECISION NOT NULL)`;
       await tx`CREATE TABLE IF NOT EXISTS budgets (
         name TEXT NOT NULL, cap TEXT NOT NULL, "sharePct" DOUBLE PRECISION NOT NULL,
         PRIMARY KEY (name, cap))`;
-      await tx`INSERT INTO ccshare_meta (app, "schemaVersion", "projectId", "createdAt")
-        VALUES ('ccshare', ${SCHEMA_VERSION}, ${randomUUID()}, ${new Date().toISOString()})`;
+      await tx`INSERT INTO ccshare_meta (app, "schemaVersion", "projectId", "createdAt", "accountId")
+        VALUES ('ccshare', ${SCHEMA_VERSION}, ${randomUUID()}, ${new Date().toISOString()}, ${accountId})`;
     });
   }
 
+  async bindAccount(accountId: string): Promise<void> {
+    // Claim only when currently unbound, so we never overwrite an existing binding.
+    await this.sql`UPDATE ccshare_meta SET "accountId" = ${accountId} WHERE "accountId" IS NULL`;
+  }
+
   async migrate(toVersion: number): Promise<void> {
+    // v1 -> v2: add the account-binding column (idempotent).
+    await this.sql`ALTER TABLE ccshare_meta ADD COLUMN IF NOT EXISTS "accountId" TEXT`;
+    // v2 -> v3: add the activity-markers table (idempotent).
+    await this.sql`CREATE TABLE IF NOT EXISTS usage_markers (
+      id TEXT PRIMARY KEY, "user" TEXT NOT NULL, at TEXT NOT NULL, model TEXT,
+      weight DOUBLE PRECISION NOT NULL)`;
+    await this.sql`CREATE INDEX IF NOT EXISTS idx_usage_markers_at ON usage_markers (at)`;
     await this.sql`UPDATE ccshare_meta SET "schemaVersion" = ${toVersion}`;
   }
 
@@ -181,6 +205,25 @@ export class PostgresStorage implements Storage {
       outputTokens: Number(r.outputTokens),
       cacheCreationTokens: Number(r.cacheCreationTokens),
       cacheReadTokens: Number(r.cacheReadTokens),
+    }));
+  }
+
+  async recordUsageMarker(m: UsageMarker): Promise<void> {
+    await this.sql`INSERT INTO usage_markers (id, "user", at, model, weight)
+      VALUES (${m.id}, ${m.user}, ${m.at}, ${m.model}, ${m.weight})
+      ON CONFLICT (id) DO NOTHING`;
+  }
+
+  async getUsageMarkersSince(since: string): Promise<UsageMarker[]> {
+    const rows = await this.sql<
+      { id: string; user: string; at: string; model: string | null; weight: number }[]
+    >`SELECT id, "user", at, model, weight FROM usage_markers WHERE at >= ${since}`;
+    return rows.map((r) => ({
+      id: r.id,
+      user: r.user,
+      at: r.at,
+      model: r.model,
+      weight: Number(r.weight),
     }));
   }
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { attributeShares } from "./shares.js";
-import { UNKNOWN_USER, type MessageUsage, type ResetEvent, type UsageSample } from "../types.js";
+import {
+  UNKNOWN_USER,
+  type MessageUsage,
+  type ResetEvent,
+  type UsageMarker,
+  type UsageSample,
+} from "../types.js";
 
 const T0 = Date.parse("2026-06-29T20:00:00.000Z");
 const at = (offsetMin: number) => new Date(T0 + offsetMin * 60_000).toISOString();
@@ -34,6 +40,19 @@ const msg = (
   outputTokens: 0,
   cacheCreationTokens: 0,
   cacheReadTokens: tokens,
+});
+
+const marker = (
+  user: string,
+  offsetMin: number,
+  weight = 1,
+  model: string | null = null
+): UsageMarker => ({
+  id: `${user}-mk-${offsetMin}`,
+  user,
+  at: at(offsetMin),
+  model,
+  weight,
 });
 
 const fiveHour = (rows: ReturnType<typeof attributeShares>) =>
@@ -187,6 +206,60 @@ describe("attributeShares", () => {
     const samples = [sample("seven_day_opus", 0, 0), sample("seven_day_opus", 40, 10)];
     // a non-opus message must not claim opus usage
     const rows = attributeShares(samples, [msg("sam", 5, 1000, "claude-sonnet-4-6")], now);
+    const opus = rows.filter((r) => r.cap === "seven_day_opus");
+    expect(opus.find((r) => r.user === UNKNOWN_USER)?.pct).toBeCloseTo(40, 5);
+    expect(opus.find((r) => r.user === "sam")).toBeUndefined();
+  });
+
+  it("clamps a negative token count so it can't invert the split", () => {
+    // A corrupt/legacy row with negative tokens must weigh 0, not flip signs. Here
+    // sam's negative field would otherwise make `total` non-positive and dump the
+    // whole rise (or a negative share) onto the wrong bucket.
+    const samples = [sample("five_hour", 0, 0), sample("five_hour", 40, 10)];
+    const messages: MessageUsage[] = [
+      { ...msg("sam", 4, 0), cacheReadTokens: -1000 }, // weight clamps to 0
+      { ...msg("alex", 6, 0), cacheReadTokens: 1000 },
+    ];
+    const rows = attributeShares(samples, messages, now);
+    expect(get(rows, "alex")).toBeCloseTo(40, 5); // alex is the only real weight
+    expect(get(rows, "sam")).toBeCloseTo(0, 5); // never negative
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(0, 5);
+  });
+
+  it("credits an otherwise-unknown rise to a user with an activity marker", () => {
+    // The tank rises 20 -> 40 with no measured message in the interval, but the
+    // daemon flagged sam was driving Code then (a resume re-prime / lagged tail).
+    const samples = [sample("five_hour", 20, 0), sample("five_hour", 40, 10)];
+    const rows = attributeShares(samples, [], now, [], [marker("sam", 5)]);
+    expect(get(rows, "sam")).toBeCloseTo(20, 5); // the +20 rise sam actually caused
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(20, 5); // the pre-daemon 20 baseline stays
+  });
+
+  it("lets a real message override a marker in the same interval", () => {
+    // A marker is a fallback only: measured activity always wins, so the rise goes
+    // to alex (who has a real message), not sam (marker only).
+    const samples = [sample("five_hour", 0, 0), sample("five_hour", 30, 10)];
+    const rows = attributeShares(samples, [msg("alex", 5, 1000)], now, [], [marker("sam", 5)]);
+    expect(get(rows, "alex")).toBeCloseTo(30, 5);
+    expect(get(rows, "sam")).toBeCloseTo(0, 5);
+  });
+
+  it("never lets a marker claim more than the rise it sits in", () => {
+    // sam's marker is in [0,10] (rise +20); a later rise 20->50 has no marker and
+    // must stay unknown — the marker can't spill into a neighbouring interval.
+    const samples = [
+      sample("five_hour", 0, 0),
+      sample("five_hour", 20, 10),
+      sample("five_hour", 50, 20),
+    ];
+    const rows = attributeShares(samples, [], now, [], [marker("sam", 5)]);
+    expect(get(rows, "sam")).toBeCloseTo(20, 5);
+    expect(get(rows, UNKNOWN_USER)).toBeCloseTo(30, 5);
+  });
+
+  it("does not let a non-opus marker claim opus usage", () => {
+    const samples = [sample("seven_day_opus", 0, 0), sample("seven_day_opus", 40, 10)];
+    const rows = attributeShares(samples, [], now, [], [marker("sam", 5, 1, "claude-sonnet-4-6")]);
     const opus = rows.filter((r) => r.cap === "seven_day_opus");
     expect(opus.find((r) => r.user === UNKNOWN_USER)?.pct).toBeCloseTo(40, 5);
     expect(opus.find((r) => r.user === "sam")).toBeUndefined();

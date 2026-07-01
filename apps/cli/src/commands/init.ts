@@ -1,8 +1,15 @@
-import { isValidName, resolveConfigDir, SCHEMA_VERSION, type StorageDriver } from "@ccshare/core";
+import {
+  isValidName,
+  resolveAccount,
+  resolveConfigDir,
+  SCHEMA_VERSION,
+  type StorageDriver,
+} from "@ccshare/core";
 import { loadConfig, newConfig, saveConfig } from "../lib/config.js";
 import { makeStorage } from "../lib/storage.js";
 import { withPrompts } from "../lib/prompt.js";
 import { validateUrl } from "../lib/validate.js";
+import { runDaemonRestart, runDaemonStart } from "./daemon.js";
 
 interface InitOptions {
   reconfigure?: boolean;
@@ -13,6 +20,8 @@ interface InitOptions {
   name?: string;
   /** Auto-confirm setting up an empty database (the prompt-on-empty gate). */
   yes?: boolean;
+  /** Skip auto-starting the background observer (commander's `--no-daemon`). */
+  daemon?: boolean;
 }
 
 /**
@@ -29,6 +38,9 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     console.log(
       `Already initialized (storage: ${existing.storage.driver}, name: ${existing.name}).`
     );
+    // Make sure the observer is running — this is idempotent (a no-op if it already
+    // is), so re-running `ccshare init` after an update just brings it back up.
+    if (opts.daemon !== false) await runDaemonStart();
     console.log("Re-run with `ccshare init --reconfigure` to change storage.");
     return;
   }
@@ -73,7 +85,14 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
       return;
     }
 
-    const cfg = newConfig({ driver, url, token, name, configDirs: [resolveConfigDir()] });
+    const configDir = resolveConfigDir();
+    // Bind the ledger to the Claude *account* (accountUuid), never the email or the
+    // ccshare person. Only a hydrated (onboarded) account has a real accountUuid;
+    // before onboarding we leave the ledger unbound and claim it later (§1.5).
+    const acct = await resolveAccount(configDir);
+    const localAccountId = acct?.hydrated ? acct.id : null;
+
+    const cfg = newConfig({ driver, url, token, name, configDirs: [configDir] });
 
     const storage = makeStorage(cfg);
     let inspection;
@@ -99,15 +118,37 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
             console.log("Aborted — nothing was written.");
             return;
           }
-          await storage.initializeSchema();
+          await storage.initializeSchema(localAccountId);
           await storage.upsertUser(name);
           console.log(`Set up ccshare (schema v${SCHEMA_VERSION}). Joined as "${name}".`);
+          if (!localAccountId) {
+            console.log(
+              "Note: no Claude account detected yet — the ledger is unbound and will\n" +
+                "bind to the first onboarded account that joins."
+            );
+          }
           break;
         }
         case "ccshare": {
           if (inspection.schemaVersion > SCHEMA_VERSION) {
             console.error(
               "This database uses a newer ccshare schema than this CLI understands. Upgrade ccshare."
+            );
+            process.exitCode = 1;
+            return;
+          }
+          // Refuse to join a ledger bound to a *different* Claude account — mixing
+          // two accounts' tanks into one table corrupts attribution (§1.5). Checked
+          // before any migrate/write. (Compares accountUuid, not email.)
+          if (
+            inspection.accountId != null &&
+            localAccountId != null &&
+            inspection.accountId !== localAccountId
+          ) {
+            console.error(
+              "This ccshare database belongs to a different Claude account than the one\n" +
+                `you're signed into (${acct?.email ?? "this machine"}). A shared ledger must\n` +
+                "track a single account. Use that account, or point at a different database."
             );
             process.exitCode = 1;
             return;
@@ -124,6 +165,11 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
               return;
             }
             await storage.migrate(SCHEMA_VERSION);
+          }
+          // Claim an unbound ledger (pre-v2, or created before onboarding) for this
+          // account. No-op when already bound; only sets a null binding.
+          if (inspection.accountId == null && localAccountId != null) {
+            await storage.bindAccount(localAccountId);
           }
           await storage.upsertUser(name);
           console.log(`Joined existing ccshare database as "${name}".`);
@@ -144,6 +190,18 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     }
 
     await saveConfig(cfg);
-    console.log(`Wrote config. You're set — try \`ccshare daemon start\`.`);
+    console.log("Wrote config.");
+
+    if (opts.daemon === false) {
+      console.log("Start the shared observer when you're ready: `ccshare daemon start`.");
+      return;
+    }
+    // Nothing left to do by hand — bring the observer up now. On a reconfigure we
+    // restart so the running process picks up the new storage, not the old one.
+    if (opts.reconfigure) await runDaemonRestart();
+    else await runDaemonStart();
+    console.log(
+      "The observer runs in the background — stop it any time with `ccshare daemon stop`."
+    );
   });
 }

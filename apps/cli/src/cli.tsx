@@ -32,6 +32,7 @@ program
   .option("--token <token>", "auth token for a remote database")
   .option("--name <name>", "your name (letters, digits, hyphens); skips the prompt")
   .option("-y, --yes", "auto-confirm setting up an empty database")
+  .option("--no-daemon", "don't auto-start the background observer after setup")
   .action(async (opts) => {
     await runInit(opts);
   });

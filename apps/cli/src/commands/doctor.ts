@@ -41,9 +41,23 @@ export async function runDoctor(): Promise<void> {
       case "empty":
         console.log("database:     empty — run `ccshare init`");
         break;
-      case "ccshare":
+      case "ccshare": {
         console.log(`database:     ccshare (schema v${inspection.schemaVersion})`);
+        // Compare the DB's bound account (accountUuid) against this machine's.
+        const localId = account?.hydrated ? account.id : null;
+        if (inspection.accountId == null) {
+          console.log("db account:   unbound (binds to the first onboarded account)");
+        } else if (localId != null && inspection.accountId !== localId) {
+          console.log(`db account:   ${inspection.accountId}`);
+          console.log(
+            "  ⚠ MISMATCH — this database is bound to a different Claude account than\n" +
+              "    the one you're signed into. The daemon will NOT record to the ledger."
+          );
+        } else {
+          console.log(`db account:   ${inspection.accountId} (matches)`);
+        }
         break;
+      }
       case "foreign":
         console.log("database:     foreign — ccshare needs its own clean database");
         break;
