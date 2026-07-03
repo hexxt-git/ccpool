@@ -189,13 +189,13 @@ export function InitScreen({
     }
     let cancelled = false;
     setProbe("checking");
-    void probeSharedGroup().then((r) => {
+    void probeSharedGroup(answers.name).then((r) => {
       if (!cancelled) setProbe(r);
     });
     return () => {
       cancelled = true;
     };
-  }, [answers.mode]);
+  }, [answers.mode, answers.name]);
 
   // connect + inspect when we reach (or retry) the database step (self-host)
   useEffect(() => {
@@ -274,6 +274,16 @@ export function InitScreen({
           } else if (step === "url") {
             advance({ url: buf.trim() || driverUrl(answers.driver ?? "libsql") });
           } else if (step === "groupPassword" || step === "memberPassword") {
+            if (isShared && step === "groupPassword") {
+              if (probe === "checking") return;
+              if (probe && typeof probe === "object" && !probe.ok) {
+                setProbe("checking");
+                void probeSharedGroup(answers.name).then((r) => {
+                  setProbe(r);
+                });
+                return;
+              }
+            }
             const v = buf;
             if (v.length < 8) return setErr("at least 8 characters");
             advance({ [step]: v } as Answers);
@@ -281,8 +291,23 @@ export function InitScreen({
             advance({ token: buf.trim() });
           }
         } else if (key.escape) back();
-        else if (key.backspace || key.delete) setBuf((b) => b.slice(0, -1));
-        else if (input && !key.ctrl && !key.meta) setBuf((b) => b + input);
+        else if (key.backspace || key.delete) {
+          if (
+            isShared &&
+            step === "groupPassword" &&
+            (probe === "checking" || (probe && typeof probe === "object" && !probe.ok))
+          )
+            return;
+          setBuf((b) => b.slice(0, -1));
+        } else if (input && !key.ctrl && !key.meta) {
+          if (
+            isShared &&
+            step === "groupPassword" &&
+            (probe === "checking" || (probe && typeof probe === "object" && !probe.ok))
+          )
+            return;
+          setBuf((b) => b + input);
+        }
         return;
       }
       if (step === "mode") {
@@ -378,9 +403,13 @@ export function InitScreen({
       : step === "url"
         ? "database url?"
         : step === "groupPassword"
-          ? groupExists
-            ? "the group password (set by your team)?"
-            : "set a group password (everyone shares it)?"
+          ? probe === "checking"
+            ? "checking the server connection..."
+            : probe && typeof probe === "object" && !probe.ok
+              ? "could not reach server"
+              : groupExists
+                ? "the group password (set by your team)?"
+                : "set a group password (everyone shares it)?"
           : step === "memberPassword"
             ? "your own password?"
             : "auth token?";
@@ -406,13 +435,17 @@ export function InitScreen({
             : inspectKind === "error"
               ? "⏎ retry · esc back"
               : "esc back"
-          : step === "done"
-            ? commit === "saving"
-              ? "setting up…"
-              : commit === "confirm-create"
-                ? "y create · n back"
-                : "⏎ continue · esc back"
-            : "⏎ next · esc back";
+          : step === "groupPassword" && probe === "checking"
+            ? "checking server…"
+            : step === "groupPassword" && probe && typeof probe === "object" && !probe.ok
+              ? "⏎ retry · esc back"
+              : step === "done"
+                ? commit === "saving"
+                  ? "setting up…"
+                  : commit === "confirm-create"
+                    ? "y create · n back"
+                    : "⏎ continue · esc back"
+                : "⏎ next · esc back";
 
   return (
     <Box flexDirection="column" width={cols} height={Math.max(1, rows - 1)} paddingX={1}>
@@ -503,6 +536,15 @@ export function InitScreen({
           </Box>
         ) : step === "inspect" ? (
           <InspectView inspect={inspect} url={answers.url ?? ""} />
+        ) : step === "groupPassword" &&
+          (probe === "checking" || (probe && typeof probe === "object" && !probe.ok)) ? (
+          <Box flexDirection="column">
+            {probe === "checking" ? (
+              <Text color={P.amber}>connecting to server…</Text>
+            ) : (
+              <Text color={P.red}>✗ {probe && typeof probe === "object" ? probe.error : ""}</Text>
+            )}
+          </Box>
         ) : step === "done" ? (
           <Box flexDirection="column">
             {commit === "error" ? (
@@ -537,27 +579,34 @@ export function InitScreen({
             )}
           </Box>
         ) : (
-          <Box flexDirection="column">
-            <Text>
-              <Text color={P.faint}>{"  › "}</Text>
-              {buf.length ? (
-                <Text color={P.cream}>{isMasked ? "•".repeat(buf.length) : buf}</Text>
-              ) : (
-                <Text color={P.faint}>
-                  {step === "name"
-                    ? "letters, digits, hyphens"
-                    : step === "url"
-                      ? `⏎ for ${driverUrl(answers.driver ?? "libsql")}`
-                      : step === "groupPassword"
-                        ? "everyone in the group uses this"
-                        : step === "memberPassword"
-                          ? "protects your name from impersonation"
-                          : "blank if none"}
-                </Text>
-              )}
-              <Text color={P.orange}>▏</Text>
-            </Text>
-            {err ? <Text color={P.red}>{"  " + err}</Text> : null}
+          <Box>
+            <Cell w={14}>
+              <Text color={P.orange} bold>
+                {STEP_LABEL[step]}:
+              </Text>
+            </Cell>
+            <Box flexDirection="column" flexGrow={1}>
+              <Text>
+                <Text color={P.faint}>{"› "}</Text>
+                {buf.length ? (
+                  <Text color={P.cream}>{isMasked ? "•".repeat(buf.length) : buf}</Text>
+                ) : (
+                  <Text color={P.faint}>
+                    {step === "name"
+                      ? "letters, digits, hyphens"
+                      : step === "url"
+                        ? `⏎ for ${driverUrl(answers.driver ?? "libsql")}`
+                        : step === "groupPassword"
+                          ? "everyone in the group uses this"
+                          : step === "memberPassword"
+                            ? "protects your name from impersonation"
+                            : "blank if none"}
+                  </Text>
+                )}
+                <Text color={P.orange}>▏</Text>
+              </Text>
+              {err ? <Text color={P.red}>{err}</Text> : null}
+            </Box>
           </Box>
         )}
       </Box>
@@ -581,6 +630,7 @@ export function ProbeBanner({
   if (!probe.ok) {
     return <Text color={P.red}>✗ {probe.error}</Text>;
   }
+  const isMemberExist = probe.groupExists && probe.memberExists;
   return (
     <Box flexDirection="column">
       <Text color={P.dim}>
@@ -594,6 +644,10 @@ export function ProbeBanner({
         ) : (
           <Text color={P.orange}>creating a new group</Text>
         )}
+      </Text>
+      <Box height={1} />
+      <Text color={P.dim}>
+        {isMemberExist ? "member exists, enter password" : "signing up new member"}
       </Text>
     </Box>
   );

@@ -69,9 +69,12 @@ export class CcshareClient {
   }
 
   /** Does a group already exist for this account? (unauthenticated pre-check) */
-  async lookupGroup(accountId: string): Promise<GroupLookupResponse> {
+  async lookupGroup(accountId: string, memberName?: string): Promise<GroupLookupResponse> {
     const url = new URL("/v1/groups/lookup", this.baseUrl);
     url.searchParams.set("accountId", accountId);
+    if (memberName) {
+      url.searchParams.set("memberName", memberName);
+    }
     const res = await this.fetchImpl(url, { method: "GET" });
     if (!res.ok) await throwApiError(res);
     return (await res.json()) as GroupLookupResponse;

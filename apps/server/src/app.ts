@@ -54,6 +54,11 @@ async function readCappedText(req: Request, max: number): Promise<string | null>
 export function makeApp(deps: ServerDeps): Hono<Vars> {
   const { registry, tenants } = deps;
   const app = new Hono<Vars>();
+  app.use("*", async (c, next) => {
+    const delay = Math.random() * 300 + 200;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    await next();
+  });
   const damper = new FailureDamper();
   const lastTouch = new Map<string, number>();
 
@@ -100,7 +105,13 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     const accountId = c.req.query("accountId");
     if (!accountId) return err(c, 400, "invalid", "accountId is required");
     const group = await registry.getGroupByAccount(accountId);
-    return c.json({ exists: !!group });
+    if (!group) return c.json({ exists: false });
+    const memberName = c.req.query("memberName");
+    if (memberName) {
+      const member = await registry.getMember(group.id, memberName);
+      return c.json({ exists: true, memberExists: !!member });
+    }
+    return c.json({ exists: true });
   });
 
   app.post("/v1/groups", async (c) => {

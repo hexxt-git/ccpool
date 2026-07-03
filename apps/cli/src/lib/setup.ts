@@ -98,6 +98,7 @@ export type SharedProbe =
       serverUrl: string;
       /** True when a group already exists for this account (→ join, not create). */
       groupExists: boolean;
+      memberExists?: boolean;
     }
   | { ok: false; error: string };
 
@@ -110,7 +111,10 @@ export type SharedProbe =
  * unreachable message so a misconfigured host is obvious (not a bare "fetch
  * failed").
  */
-export async function probeSharedGroup(): Promise<SharedProbe> {
+export async function probeSharedGroup(
+  memberName?: string | null,
+  cfg?: Config | null
+): Promise<SharedProbe> {
   const configDir = resolveConfigDir();
   const acct = await resolveAccount(configDir);
   if (!acct?.hydrated) {
@@ -121,16 +125,20 @@ export async function probeSharedGroup(): Promise<SharedProbe> {
         "(the group is tied to the account everyone shares)",
     };
   }
-  const serverUrl = resolveServerUrl(null);
+  const serverUrl = resolveServerUrl(cfg);
   const urlErr = validateServerUrl(serverUrl);
   if (urlErr) return { ok: false, error: urlErr };
   try {
-    const { exists } = await new CcshareClient(serverUrl).lookupGroup(acct.id);
+    const { exists, memberExists } = await new CcshareClient(serverUrl).lookupGroup(
+      acct.id,
+      memberName || undefined
+    );
     return {
       ok: true,
       account: { id: acct.id, email: acct.email },
       serverUrl,
       groupExists: exists,
+      memberExists,
     };
   } catch (err) {
     return {
@@ -151,6 +159,7 @@ export async function applySharedJoin(opts: {
   groupPassword: string;
   memberPassword: string;
   allowCreate: boolean;
+  config?: Config | null;
 }): Promise<SharedJoinResult> {
   const configDir = resolveConfigDir();
   // The group is located and bound by the Claude accountUuid — resolved locally,
@@ -165,7 +174,7 @@ export async function applySharedJoin(opts: {
     };
   }
 
-  const serverUrl = resolveServerUrl(null);
+  const serverUrl = resolveServerUrl(opts.config);
   const urlErr = validateServerUrl(serverUrl);
   if (urlErr) return { ok: false, error: urlErr };
 

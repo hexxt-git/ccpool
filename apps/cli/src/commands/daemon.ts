@@ -36,8 +36,10 @@ export function spawnDaemon(cfg: Config): { pid: number } | { already: number } 
   const paths = daemonPathsFor(cfg);
   const existing = readPid(paths.pidFile);
   if (existing !== null && isAlive(existing)) return { already: existing };
-  const cliEntry = fileURLToPath(new URL("../cli.js", import.meta.url));
-  const pid = spawnDetached(process.execPath, [cliEntry, "daemon", "run"], {
+  const isDev = import.meta.url.endsWith(".ts") || import.meta.url.endsWith(".tsx");
+  const cliEntry = fileURLToPath(new URL(isDev ? "../cli.tsx" : "../cli.js", import.meta.url));
+  const args = [...process.execArgv, cliEntry, "daemon", "run"];
+  const pid = spawnDetached(process.execPath, args, {
     logFile: paths.logFile,
   });
   return { pid };
@@ -107,8 +109,10 @@ export async function runDaemonStart(): Promise<void> {
     return;
   }
 
-  const cliEntry = fileURLToPath(new URL("../cli.js", import.meta.url));
-  const pid = spawnDetached(process.execPath, [cliEntry, "daemon", "run"], {
+  const isDev = import.meta.url.endsWith(".ts") || import.meta.url.endsWith(".tsx");
+  const cliEntry = fileURLToPath(new URL(isDev ? "../cli.tsx" : "../cli.js", import.meta.url));
+  const args = [...process.execArgv, cliEntry, "daemon", "run"];
+  const pid = spawnDetached(process.execPath, args, {
     logFile: paths.logFile,
   });
   console.log(`Daemon started (pid ${pid}). Logs: ${paths.logFile}`);

@@ -17,6 +17,7 @@ export const MIN_PASSWORD_LENGTH = 8;
  */
 export interface GroupLookupResponse {
   exists: boolean;
+  memberExists?: boolean;
 }
 
 /** POST /v1/groups — create the group for this Claude account (first member). */

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useStdin } from "ink";
 import type { Config, Mode } from "@ccshare/core";
 import { applySetup, applySharedJoin } from "../../lib/setup.js";
@@ -6,21 +6,7 @@ import { resolveServerUrl } from "../../lib/backend.js";
 import { FieldRow } from "../parts-extra.js";
 import { Cell } from "../designs/parts.js";
 import { P } from "../designs/palette.js";
-import { useTermSize } from "../use-term-size.js";
 import { StorageScreen } from "./Storage.js";
-
-/**
- * The backend chooser reached from the config "backend" row. It first asks how
- * the group's data is hosted, then branches:
- *  - shared hosting → the two-password join form (reuses {@link applySharedJoin},
- *    including the create-a-new-group confirmation);
- *  - self-host → the existing connect-and-test {@link StorageScreen}.
- *
- * Either branch persists the config itself (via setup.ts) and hands the saved
- * config up through {@link onApplied}; the parent restarts the daemon so it picks
- * up the new backend (in shared mode the bearer changed, so a restart is required
- * — see the daemon note in commands/config.ts).
- */
 
 const MODES: { value: Mode; label: string; desc: string }[] = [
   { value: "shared", label: "shared hosting", desc: "the ccshare server — just two passwords" },
@@ -35,13 +21,14 @@ export function BackendScreen({
   config,
   onApplied,
   onCancel,
+  setFooter,
 }: {
   config: Config;
   onApplied: (cfg: Config, note: string) => void;
   onCancel: () => void;
+  setFooter: (txt: string) => void;
 }): React.ReactElement {
   const { isRawModeSupported } = useStdin();
-  const { cols, rows } = useTermSize();
 
   const [phase, setPhase] = useState<Phase>("pick");
   const [sel, setSel] = useState(() =>
@@ -69,6 +56,7 @@ export function BackendScreen({
         groupPassword: group,
         memberPassword: member,
         allowCreate,
+        config,
       });
       if (res.ok) {
         onApplied(res.config, "✓ switched to shared hosting");
@@ -83,6 +71,22 @@ export function BackendScreen({
       }
     })();
   };
+
+  useEffect(() => {
+    if (phase === "pick") {
+      setFooter("↑↓ select · ⏎ next · esc cancel");
+    } else if (phase === "shared") {
+      if (editing) {
+        setFooter("⏎ set · esc cancel");
+      } else if (commit === "confirm-create") {
+        setFooter("y create · n back");
+      } else if (row === "action") {
+        setFooter("⏎ join / save · ↑↓ move · esc back");
+      } else {
+        setFooter("⏎ edit · ↑↓ move · esc back");
+      }
+    }
+  }, [phase, editing, commit, row, setFooter]);
 
   useInput(
     (input, key) => {
@@ -155,109 +159,84 @@ export function BackendScreen({
           })();
         }}
         onCancel={() => setPhase("pick")}
+        setFooter={setFooter}
       />
     );
   }
 
-  const w = Math.min(74, cols - 4);
   const serverUrl = resolveServerUrl(config);
 
   return (
-    <Box flexDirection="column" width={cols} height={Math.max(1, rows - 1)} paddingX={1}>
-      <Box flexGrow={1} />
-      <Box
-        alignSelf="center"
-        flexDirection="column"
-        width={w}
-        borderStyle="round"
-        borderColor={P.blue}
-        paddingX={2}
-        paddingY={1}
-      >
-        <Text color={P.blue} bold>
-          backend
-        </Text>
+    <Box flexDirection="column">
+      <Text color={P.orange} bold>
+        backend connection setup
+      </Text>
 
-        {phase === "pick" ? (
-          <>
-            <Text color={P.dim}>how is the group&apos;s data hosted?</Text>
-            <Box height={1} />
-            {MODES.map((m, i) => (
-              <Box key={m.value}>
-                <Text color={i === sel ? P.orange : P.faint}>{i === sel ? "▸ " : "  "}</Text>
-                <Cell w={16}>
-                  <Text color={i === sel ? P.cream : P.dim} bold={i === sel}>
-                    {m.label}
-                    {m.value === config.mode ? " ·" : ""}
-                  </Text>
-                </Cell>
-                <Text color={i === sel ? P.dim : P.faint}>{m.desc}</Text>
-              </Box>
-            ))}
-            {msg ? (
-              <Box marginTop={1}>
-                <Text color={P.red}>{msg}</Text>
-              </Box>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Text color={P.dim}>
-              join as <Text color={P.cream}>{config.name}</Text> · {serverUrl}
-            </Text>
-            <Box height={1} />
-            <FieldRow
-              label="group password"
-              focused={row === "group"}
-              editing={editing && row === "group"}
-            >
-              {editing && row === "group" ? (
-                "•".repeat(buf.length)
-              ) : group ? (
-                "•".repeat(group.length)
-              ) : (
-                <Text color={P.faint}>everyone in the group shares this</Text>
-              )}
-            </FieldRow>
-            <FieldRow
-              label="your password"
-              focused={row === "member"}
-              editing={editing && row === "member"}
-            >
-              {editing && row === "member" ? (
-                "•".repeat(buf.length)
-              ) : member ? (
-                "•".repeat(member.length)
-              ) : (
-                <Text color={P.faint}>protects your name from impersonation</Text>
-              )}
-            </FieldRow>
-            <Box height={1} />
-            <Box>
-              <Cell w={18}>
-                <Text color={row === "action" ? P.orange : P.dim} bold={row === "action"}>
-                  {row === "action" ? "▸ " : "  "}connect
+      {phase === "pick" ? (
+        <>
+          <Text color={P.dim}>how is the group&apos;s data hosted?</Text>
+          <Box height={1} />
+          {MODES.map((m, i) => (
+            <Box key={m.value}>
+              <Text color={i === sel ? P.orange : P.faint}>{i === sel ? "▸ " : "  "}</Text>
+              <Cell w={16}>
+                <Text color={i === sel ? P.cream : P.dim} bold={i === sel}>
+                  {m.label}
+                  {m.value === config.mode ? " ·" : ""}
                 </Text>
               </Cell>
-              <ActionText commit={commit} msg={msg} />
+              <Text color={i === sel ? P.dim : P.faint}>{m.desc}</Text>
             </Box>
-          </>
-        )}
-      </Box>
-      <Box flexGrow={1} />
-      <Box justifyContent="center">
-        <Text color={P.faint}>
-          {phase === "pick"
-            ? "↑↓ select · ⏎ next · esc cancel"
-            : editing
-              ? "⏎ set · esc cancel"
-              : commit === "confirm-create"
-                ? "y create · n back"
-                : row === "action"
-                  ? "⏎ join / save · ↑↓ move · esc back"
-                  : "⏎ edit · ↑↓ move · esc back"}
-        </Text>
-      </Box>
+          ))}
+          {msg ? (
+            <Box marginTop={1}>
+              <Text color={P.red}>{msg}</Text>
+            </Box>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Text color={P.dim}>
+            join as <Text color={P.cream}>{config.name}</Text> · {serverUrl}
+          </Text>
+          <Box height={1} />
+          <FieldRow
+            label="group password"
+            focused={row === "group"}
+            editing={editing && row === "group"}
+          >
+            {editing && row === "group" ? (
+              "•".repeat(buf.length)
+            ) : group ? (
+              "•".repeat(group.length)
+            ) : (
+              <Text color={P.faint}>everyone in the group shares this</Text>
+            )}
+          </FieldRow>
+          <FieldRow
+            label="your password"
+            focused={row === "member"}
+            editing={editing && row === "member"}
+          >
+            {editing && row === "member" ? (
+              "•".repeat(buf.length)
+            ) : member ? (
+              "•".repeat(member.length)
+            ) : (
+              <Text color={P.faint}>protects your name from impersonation</Text>
+            )}
+          </FieldRow>
+          <Box height={1} />
+          <Box>
+            <Cell w={18}>
+              <Text color={row === "action" ? P.orange : P.dim} bold={row === "action"}>
+                {row === "action" ? "▸ " : "  "}connect
+              </Text>
+            </Cell>
+            <ActionText commit={commit} msg={msg} />
+          </Box>
+        </>
+      )}
     </Box>
   );
 }

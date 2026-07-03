@@ -4,28 +4,22 @@ import type { Config, StorageDriver } from "@ccshare/core";
 import { inspectFor, type Classification } from "../../lib/setup.js";
 import { Cell } from "../designs/parts.js";
 import { P } from "../designs/palette.js";
-import { useTermSize } from "../use-term-size.js";
 import { DRIVERS, cycle, driverUrl, needsToken, FieldRow } from "../parts-extra.js";
 
-/**
- * Weightier reconfigure flow reached from the config "storage" row: enter the
- * connection, test it (a real connect + inspect), and only save once the target
- * is a clean or joinable ccshare DB. Saving is handled by the parent, which runs
- * the actual join/bind + daemon restart.
- */
 type Phase = "edit" | "testing" | { done: Classification };
 
 export function StorageScreen({
   config,
   onSave,
   onCancel,
+  setFooter,
 }: {
   config: Config;
   onSave: (driver: StorageDriver, url: string, token: string | undefined) => void;
   onCancel: () => void;
+  setFooter: (txt: string) => void;
 }): React.ReactElement {
   const { isRawModeSupported } = useStdin();
-  const { cols, rows } = useTermSize();
 
   const [driver, setDriver] = useState<StorageDriver>(config.storage?.driver ?? "libsql");
   const [url, setUrl] = useState(config.storage?.url ?? "");
@@ -57,6 +51,16 @@ export function StorageScreen({
       cancelled = true;
     };
   }, [phase, driver, url, token]);
+
+  useEffect(() => {
+    if (cur === "driver") {
+      setFooter("←→ pick driver · ↑↓ move · esc cancel");
+    } else if (cur === "action") {
+      setFooter("⏎ test / save · ↑↓ move · esc cancel");
+    } else {
+      setFooter("⏎ edit · ↑↓ move · esc cancel");
+    }
+  }, [cur, setFooter]);
 
   useInput(
     (input, key) => {
@@ -93,73 +97,51 @@ export function StorageScreen({
     { isActive: !!isRawModeSupported }
   );
 
-  const w = Math.min(78, cols - 4);
   const rowFocused = (k: string): boolean => cur === k;
 
   return (
-    <Box flexDirection="column" width={cols} height={Math.max(1, rows - 1)} paddingX={1}>
-      <Box flexGrow={1} />
-      <Box
-        alignSelf="center"
-        flexDirection="column"
-        width={w}
-        borderStyle="round"
-        borderColor={P.blue}
-        paddingX={2}
-        paddingY={1}
-      >
-        <Text color={P.blue} bold>
-          storage
-        </Text>
-        <Text color={P.dim}>connection settings — tested before saving.</Text>
-        <Box height={1} />
+    <Box flexDirection="column">
+      <Text color={P.orange} bold>
+        self-host storage settings
+      </Text>
+      <Text color={P.dim}>connection settings — tested before saving.</Text>
+      <Box height={1} />
 
-        <FieldRow label="driver" focused={rowFocused("driver")}>
-          {DRIVERS.map((d) => (
-            <Text key={d} color={d === driver ? P.cream : P.faint} bold={d === driver}>
-              {d === driver ? `[${d}]` : ` ${d} `}
-              {"  "}
-            </Text>
-          ))}
+      <FieldRow label="driver" focused={rowFocused("driver")}>
+        {DRIVERS.map((d) => (
+          <Text key={d} color={d === driver ? P.cream : P.faint} bold={d === driver}>
+            {d === driver ? `[${d}]` : ` ${d} `}
+            {"  "}
+          </Text>
+        ))}
+      </FieldRow>
+      <FieldRow label="url" focused={rowFocused("url")} editing={editing && cur === "url"}>
+        {editing && cur === "url" ? buf : url || <Text color={P.faint}>{driverUrl(driver)}</Text>}
+      </FieldRow>
+      {tokenNeeded ? (
+        <FieldRow
+          label="auth token"
+          focused={rowFocused("token")}
+          editing={editing && cur === "token"}
+        >
+          {editing && cur === "token" ? (
+            "•".repeat(buf.length)
+          ) : token ? (
+            "•".repeat(token.length)
+          ) : (
+            <Text color={P.faint}>required for remote libsql</Text>
+          )}
         </FieldRow>
-        <FieldRow label="url" focused={rowFocused("url")} editing={editing && cur === "url"}>
-          {editing && cur === "url" ? buf : url || <Text color={P.faint}>{driverUrl(driver)}</Text>}
-        </FieldRow>
-        {tokenNeeded ? (
-          <FieldRow
-            label="auth token"
-            focused={rowFocused("token")}
-            editing={editing && cur === "token"}
-          >
-            {editing && cur === "token" ? (
-              "•".repeat(buf.length)
-            ) : token ? (
-              "•".repeat(token.length)
-            ) : (
-              <Text color={P.faint}>required for remote libsql</Text>
-            )}
-          </FieldRow>
-        ) : null}
+      ) : null}
 
-        <Box height={1} />
-        <Box>
-          <Cell w={18}>
-            <Text color={rowFocused("action") ? P.orange : P.dim} bold={rowFocused("action")}>
-              {rowFocused("action") ? "▸ " : "  "}connection
-            </Text>
-          </Cell>
-          <ActionText phase={phase} />
-        </Box>
-      </Box>
-      <Box flexGrow={1} />
-      <Box justifyContent="center">
-        <Text color={P.faint}>
-          {cur === "driver"
-            ? "←→ pick driver · ↑↓ move · esc cancel"
-            : cur === "action"
-              ? "⏎ test / save · ↑↓ move · esc cancel"
-              : "⏎ edit · ↑↓ move · esc cancel"}
-        </Text>
+      <Box height={1} />
+      <Box>
+        <Cell w={18}>
+          <Text color={rowFocused("action") ? P.orange : P.dim} bold={rowFocused("action")}>
+            {rowFocused("action") ? "▸ " : "  "}connection
+          </Text>
+        </Cell>
+        <ActionText phase={phase} />
       </Box>
     </Box>
   );

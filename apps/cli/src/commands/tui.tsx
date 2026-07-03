@@ -10,9 +10,29 @@ export async function runTui(): Promise<void> {
   const { cfg, viewSource } = ctx;
   process.stdout.write("\x1B[2J\x1B[H");
   const app = render(<App cfg={cfg} viewSource={viewSource} />);
+
+  const cleanExit = () => {
+    process.stdout.write("\x1B[2J\x1B[H");
+  };
+
+  const sigintHandler = () => {
+    cleanExit();
+    void viewSource
+      .close()
+      .catch(() => {})
+      .then(() => {
+        process.exit(0);
+      });
+  };
+  process.once("SIGINT", sigintHandler);
+  process.once("SIGTERM", sigintHandler);
+
   try {
     await app.waitUntilExit();
   } finally {
+    process.off("SIGINT", sigintHandler);
+    process.off("SIGTERM", sigintHandler);
+    cleanExit();
     await viewSource.close();
   }
 }

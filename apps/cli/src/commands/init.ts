@@ -5,6 +5,7 @@ import {
   SCHEMA_VERSION,
   type Mode,
   type StorageDriver,
+  type Config,
 } from "@ccshare/core";
 import { loadConfig, newConfig, saveConfig } from "../lib/config.js";
 import { makeStorage } from "../lib/storage.js";
@@ -119,9 +120,9 @@ async function askName(
 async function sharedInit(
   p: Prompts,
   opts: InitOptions,
-  existing: { name: string } | null
+  existing: Config | null
 ): Promise<boolean> {
-  const probe = await probeSharedGroup();
+  const probe = await probeSharedGroup(null, existing);
   if (!probe.ok) {
     console.error(probe.error);
     process.exitCode = 1;
@@ -161,6 +162,7 @@ async function sharedInit(
     groupPassword,
     memberPassword,
     allowCreate: false,
+    config: existing,
   });
   if (!res.ok && res.canCreate) {
     const ok =
@@ -169,7 +171,13 @@ async function sharedInit(
       console.log("Aborted — nothing was created.");
       return false;
     }
-    res = await applySharedJoin({ name, groupPassword, memberPassword, allowCreate: true });
+    res = await applySharedJoin({
+      name,
+      groupPassword,
+      memberPassword,
+      allowCreate: true,
+      config: existing,
+    });
   }
   if (!res.ok) {
     console.error(res.error);

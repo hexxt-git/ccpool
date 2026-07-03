@@ -18,7 +18,7 @@ DB_PASS      := ccshare
 DB_NAME      := ccshare
 DB_URL       := postgres://$(DB_USER):$(DB_PASS)@localhost:$(DB_PORT)/$(DB_NAME)
 
-.PHONY: db-up db-down db-reset db-psql db-url db-logs test-pg
+.PHONY: db-up db-down db-reset db-psql db-url db-logs test-pg db-clear
 
 db-up:
 	@# Idempotent: `docker start` succeeds whether the container is stopped OR
@@ -46,6 +46,16 @@ db-down:
 	@docker rm -f $(DB_CONTAINER) >/dev/null 2>&1 && echo "removed $(DB_CONTAINER)." || echo "$(DB_CONTAINER) not present."
 
 db-reset: db-down db-up
+
+db-clear:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(DB_CONTAINER)$$" >/dev/null 2>&1; then \
+		echo "clearing postgres database $(DB_NAME)…"; \
+		docker exec -i $(DB_CONTAINER) psql -U $(DB_USER) -d postgres -c "REVOKE CONNECT ON DATABASE $(DB_NAME) FROM public;" >/dev/null 2>&1 || true; \
+		docker exec -i $(DB_CONTAINER) psql -U $(DB_USER) -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$(DB_NAME)' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true; \
+		docker exec -i $(DB_CONTAINER) psql -U $(DB_USER) -d postgres -c "DROP DATABASE IF EXISTS $(DB_NAME);" >/dev/null && \
+		docker exec -i $(DB_CONTAINER) psql -U $(DB_USER) -d postgres -c "CREATE DATABASE $(DB_NAME);" >/dev/null && \
+		echo "postgres database $(DB_NAME) cleared."; \
+	fi
 
 db-psql:
 	@docker exec -it $(DB_CONTAINER) psql -U $(DB_USER) -d $(DB_NAME)
