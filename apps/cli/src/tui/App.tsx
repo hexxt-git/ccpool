@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
-import type { Config, Storage } from "@ccshare/core";
+import type { Config, ViewSource } from "@ccshare/core";
 import { gatherView } from "../lib/view.js";
 import { toDesignModel, type DesignModel } from "../lib/design-model.js";
 import { loadConfig } from "../lib/config.js";
@@ -31,11 +31,11 @@ const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · c configure · q quit";
  */
 export function App({
   cfg,
-  storage,
+  viewSource,
   onConfigure,
 }: {
   cfg: Config;
-  storage: Storage;
+  viewSource: ViewSource;
   /** When set, `c` opens the config screen and the footer advertises it. */
   onConfigure?: () => void;
 }): React.ReactElement {
@@ -51,13 +51,13 @@ export function App({
 
   const refresh = useCallback(async () => {
     try {
-      const [vm, freshCfg] = await Promise.all([gatherView(cfg, storage), loadConfig()]);
+      const [vm, freshCfg] = await Promise.all([gatherView(cfg, viewSource), loadConfig()]);
       setModel(toDesignModel(vm, freshCfg?.name ?? cfg.name));
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
     }
-  }, [cfg, storage]);
+  }, [cfg, viewSource]);
 
   useEffect(() => {
     void refresh();

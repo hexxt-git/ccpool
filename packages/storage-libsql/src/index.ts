@@ -1,9 +1,10 @@
-import { createClient, type Client, type InValue } from "@libsql/client";
+import { createClient, type Client, type InStatement, type InValue } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 import {
   CAP_KINDS,
+  isEmptyBatch,
   SCHEMA_VERSION,
   UNKNOWN_USER,
   type CapKind,
@@ -11,6 +12,7 @@ import {
   type MessageUsage,
   type ResetEvent,
   type Storage,
+  type TickBatch,
   type UsageMarker,
   type UsageSample,
   type User,
@@ -40,8 +42,8 @@ export class LibsqlStorage implements Storage {
     const tables = new Set(rows.map((r) => String(r.name)));
     if (tables.size === 0) return { kind: "empty" };
     if (tables.has("ccshare_meta")) {
-      // SELECT * (not a named column) so a pre-v2 DB lacking `accountId` still
-      // reads — the missing column simply comes back undefined, not an error.
+      // SELECT * (not named columns) so a DB from another build still reads —
+      // a missing column simply comes back undefined, not an error.
       const meta = await this.client.execute("SELECT * FROM ccshare_meta LIMIT 1");
       const row = meta.rows[0];
       return {
@@ -65,7 +67,8 @@ export class LibsqlStorage implements Storage {
            schemaVersion INTEGER NOT NULL,
            projectId TEXT NOT NULL,
            createdAt TEXT NOT NULL,
-           accountId TEXT
+           accountId TEXT,
+           writeSeq INTEGER NOT NULL DEFAULT 0
          )`,
         `CREATE TABLE IF NOT EXISTS users (
            name TEXT PRIMARY KEY,
@@ -77,7 +80,7 @@ export class LibsqlStorage implements Storage {
            resetsAt TEXT,
            capturedAt TEXT NOT NULL
          )`,
-        `CREATE INDEX IF NOT EXISTS idx_usage_samples_cap ON usage_samples (cap, capturedAt)`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_samples_cap ON usage_samples (cap, capturedAt)`,
         `CREATE TABLE IF NOT EXISTS message_usage (
            uuid TEXT PRIMARY KEY,
            user TEXT NOT NULL,
@@ -102,18 +105,11 @@ export class LibsqlStorage implements Storage {
            at TEXT NOT NULL,
            previousPct REAL NOT NULL
          )`,
-        // The budgets feature was retired; the table is still created so an older
-        // CLI that predates the removal can join a fresh DB without erroring. It is
-        // never read or written by current code.
-        `CREATE TABLE IF NOT EXISTS budgets (
-           name TEXT NOT NULL,
-           cap TEXT NOT NULL,
-           sharePct REAL NOT NULL,
-           PRIMARY KEY (name, cap)
-         )`,
+        `CREATE INDEX IF NOT EXISTS idx_reset_events_at ON reset_events (at)`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq ON reset_events (cap, at)`,
         {
-          sql: `INSERT INTO ccshare_meta (app, schemaVersion, projectId, createdAt, accountId)
-                VALUES ('ccshare', ?, ?, ?, ?)`,
+          sql: `INSERT INTO ccshare_meta (app, schemaVersion, projectId, createdAt, accountId, writeSeq)
+                VALUES ('ccshare', ?, ?, ?, ?, 0)`,
           args: [SCHEMA_VERSION, randomUUID(), new Date().toISOString(), accountId],
         },
       ],
@@ -130,13 +126,25 @@ export class LibsqlStorage implements Storage {
   }
 
   async migrate(toVersion: number): Promise<void> {
-    // v1 is the baseline — the full schema is created by initializeSchema, so
-    // there are no historical steps. Kept for the interface and for future
-    // additive migrations (add idempotent ALTER/CREATE steps here then).
-    await this.client.execute({
-      sql: "UPDATE ccshare_meta SET schemaVersion = ?",
-      args: [toVersion],
-    });
+    // v2: make usage_samples/reset_events idempotent on their natural keys.
+    // Additive and idempotent — dedup any rows an older build's retries may have
+    // duplicated (keep the earliest by rowid), then add the unique indexes. The
+    // old non-unique idx_usage_samples_cap is dropped so its name can be reused
+    // for the unique one (CREATE … IF NOT EXISTS would otherwise see the name and
+    // skip). Safe to run more than once (a multi-machine migration race).
+    await this.client.batch(
+      [
+        `DELETE FROM usage_samples WHERE rowid NOT IN (
+           SELECT MIN(rowid) FROM usage_samples GROUP BY cap, capturedAt)`,
+        `DROP INDEX IF EXISTS idx_usage_samples_cap`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_samples_cap ON usage_samples (cap, capturedAt)`,
+        `DELETE FROM reset_events WHERE rowid NOT IN (
+           SELECT MIN(rowid) FROM reset_events GROUP BY cap, at)`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq ON reset_events (cap, at)`,
+        { sql: "UPDATE ccshare_meta SET schemaVersion = ?", args: [toVersion] },
+      ],
+      "write"
+    );
   }
 
   async close(): Promise<void> {
@@ -144,11 +152,17 @@ export class LibsqlStorage implements Storage {
   }
 
   async upsertUser(name: string): Promise<void> {
-    await this.client.execute({
-      sql: `INSERT INTO users (name, createdAt) VALUES (?, ?)
-            ON CONFLICT(name) DO NOTHING`,
-      args: [name, new Date().toISOString()],
-    });
+    await this.client.batch(
+      [
+        {
+          sql: `INSERT INTO users (name, createdAt) VALUES (?, ?)
+                ON CONFLICT(name) DO NOTHING`,
+          args: [name, new Date().toISOString()],
+        },
+        BUMP_WRITE_SEQ,
+      ],
+      "write"
+    );
   }
 
   async getUsers(): Promise<User[]> {
@@ -156,11 +170,76 @@ export class LibsqlStorage implements Storage {
     return rows.map((r) => ({ name: String(r.name), createdAt: String(r.createdAt) }));
   }
 
-  async recordUsageSample(s: UsageSample): Promise<void> {
-    await this.client.execute({
-      sql: `INSERT INTO usage_samples (cap, pct, resetsAt, capturedAt) VALUES (?, ?, ?, ?)`,
-      args: [s.cap, s.pct, s.resetsAt, s.capturedAt],
-    });
+  async recordBatch(batch: TickBatch): Promise<void> {
+    if (isEmptyBatch(batch)) return;
+    const stmts: InStatement[] = [];
+    for (const s of batch.samples) {
+      stmts.push({
+        sql: `INSERT INTO usage_samples (cap, pct, resetsAt, capturedAt) VALUES (?, ?, ?, ?)
+              ON CONFLICT(cap, capturedAt) DO NOTHING`,
+        args: [s.cap, s.pct, s.resetsAt, s.capturedAt] satisfies InValue[],
+      });
+    }
+    for (const e of batch.resets) {
+      stmts.push({
+        sql: `INSERT INTO reset_events (cap, at, previousPct) VALUES (?, ?, ?)
+              ON CONFLICT(cap, at) DO NOTHING`,
+        args: [e.cap, e.at, e.previousPct] satisfies InValue[],
+      });
+    }
+    for (const m of batch.messages) {
+      stmts.push({
+        sql: `INSERT INTO message_usage
+                (uuid, user, timestamp, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(uuid) DO NOTHING`,
+        args: [
+          m.uuid,
+          m.user,
+          m.timestamp,
+          m.model,
+          m.inputTokens,
+          m.outputTokens,
+          m.cacheCreationTokens,
+          m.cacheReadTokens,
+        ] satisfies InValue[],
+      });
+    }
+    for (const m of batch.markers) {
+      stmts.push({
+        sql: `INSERT INTO usage_markers (id, user, at, model, weight)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO NOTHING`,
+        args: [m.id, m.user, m.at, m.model, m.weight] satisfies InValue[],
+      });
+    }
+    stmts.push(BUMP_WRITE_SEQ);
+    await this.client.batch(stmts, "write");
+  }
+
+  async prune(before: string): Promise<void> {
+    await this.client.batch(
+      [
+        { sql: `DELETE FROM usage_samples WHERE capturedAt < ?`, args: [before] },
+        { sql: `DELETE FROM reset_events WHERE at < ?`, args: [before] },
+        { sql: `DELETE FROM message_usage WHERE timestamp < ?`, args: [before] },
+        { sql: `DELETE FROM usage_markers WHERE at < ?`, args: [before] },
+        BUMP_WRITE_SEQ,
+      ],
+      "write"
+    );
+  }
+
+  async getChangeToken(): Promise<string> {
+    try {
+      const { rows } = await this.client.execute("SELECT writeSeq FROM ccshare_meta LIMIT 1");
+      return String(rows[0]?.writeSeq ?? 0);
+    } catch (err) {
+      throw new Error(
+        "this database predates the current schema (no writeSeq) — re-run `ccshare init`",
+        { cause: err }
+      );
+    }
   }
 
   async getLatestSamples(): Promise<UsageSample[]> {
@@ -194,13 +273,6 @@ export class LibsqlStorage implements Storage {
     }));
   }
 
-  async recordReset(e: ResetEvent): Promise<void> {
-    await this.client.execute({
-      sql: `INSERT INTO reset_events (cap, at, previousPct) VALUES (?, ?, ?)`,
-      args: [e.cap, e.at, e.previousPct],
-    });
-  }
-
   async getResetsSince(since: string): Promise<ResetEvent[]> {
     const { rows } = await this.client.execute({
       sql: `SELECT cap, at, previousPct FROM reset_events WHERE at >= ? ORDER BY at ASC`,
@@ -211,29 +283,6 @@ export class LibsqlStorage implements Storage {
       at: String(r.at),
       previousPct: Number(r.previousPct),
     }));
-  }
-
-  async recordMessageUsage(rows: MessageUsage[]): Promise<void> {
-    if (rows.length === 0) return;
-    await this.client.batch(
-      rows.map((m) => ({
-        sql: `INSERT INTO message_usage
-                (uuid, user, timestamp, model, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(uuid) DO NOTHING`,
-        args: [
-          m.uuid,
-          m.user,
-          m.timestamp,
-          m.model,
-          m.inputTokens,
-          m.outputTokens,
-          m.cacheCreationTokens,
-          m.cacheReadTokens,
-        ] satisfies InValue[],
-      })),
-      "write"
-    );
   }
 
   async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
@@ -255,15 +304,6 @@ export class LibsqlStorage implements Storage {
     }));
   }
 
-  async recordUsageMarker(m: UsageMarker): Promise<void> {
-    await this.client.execute({
-      sql: `INSERT INTO usage_markers (id, user, at, model, weight)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO NOTHING`,
-      args: [m.id, m.user, m.at, m.model, m.weight] satisfies InValue[],
-    });
-  }
-
   async getUsageMarkersSince(since: string): Promise<UsageMarker[]> {
     const { rows } = await this.client.execute({
       sql: `SELECT id, user, at, model, weight FROM usage_markers WHERE at >= ?`,
@@ -278,6 +318,12 @@ export class LibsqlStorage implements Storage {
     }));
   }
 }
+
+/** Every write batch ends with this so one tick bumps the change token once. */
+const BUMP_WRITE_SEQ: InStatement = {
+  sql: "UPDATE ccshare_meta SET writeSeq = writeSeq + 1",
+  args: [],
+};
 
 /**
  * Normalize a storage URL before passing it to libsql:

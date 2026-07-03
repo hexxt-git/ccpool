@@ -7,3 +7,5 @@ dist
 .DS_Store
 scratch/
 *.db
+# local env files (dev DB URLs, secrets) — never commit; ship .env.example instead
+.env

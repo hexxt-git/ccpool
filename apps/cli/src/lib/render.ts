@@ -24,7 +24,7 @@ export function renderTank(samples: UsageSample[], now: number = Date.now()): st
     const s = byCap.get(cap);
     if (!s) continue;
     const cd = countdown(s.resetsAt, now);
-    const resets = cd ? `· resets in ${cd}` : "";
+    const resets = cd ? (cd === "due" ? "· reset is due" : `· resets in ${cd}`) : "";
     lines.push(`${label}${bar(s.pct)}  ${pctLabel(s.pct).padStart(4)}   ${resets}`);
   }
   return lines;

@@ -1,0 +1,33 @@
+{
+  "name": "@ccshare/server",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ccshare/core": "workspace:*",
+    "@ccshare/storage-postgres": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@ccshare/daemon": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

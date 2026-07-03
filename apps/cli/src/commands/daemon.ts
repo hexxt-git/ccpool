@@ -11,7 +11,7 @@ import {
 } from "@ccshare/daemon";
 import type { Config, LocalState } from "@ccshare/core";
 import { ccshareDir } from "../lib/config.js";
-import { requireInit } from "../lib/guard.js";
+import { makeIngestSink } from "../lib/backend.js";
 import { loadConfig } from "../lib/config.js";
 
 function pathsFor(cfgConfigDir: string) {
@@ -68,13 +68,18 @@ export function tailDaemonLog(cfg: Config, n = 8): string[] {
 
 /** Foreground loop — what the detached process runs. Blocks until signalled. */
 export async function runDaemonForeground(): Promise<void> {
-  const ctx = await requireInit();
-  if (!ctx) return;
-  const { cfg, storage } = ctx;
+  const cfg = await loadConfig();
+  if (!cfg) {
+    console.error("Not initialized. Run `ccshare init` first.");
+    process.exitCode = 1;
+    return;
+  }
   const configDir = cfg.configDirs[0] ?? process.cwd();
 
   await startDaemon({
-    storage,
+    // Uninitialized/unreachable backends surface through the sink's bootstrap
+    // (logged, retried) rather than blocking here — same failure path as ticks.
+    sink: makeIngestSink(cfg),
     paths: pathsFor(configDir),
     configDir,
     name: cfg.name,

@@ -1,6 +1,7 @@
 import { isTokenExpired, readCredentials, resolveAccount, resolveConfigDir } from "@ccshare/core";
 import { configPath, loadConfig } from "../lib/config.js";
 import { makeStorage } from "../lib/storage.js";
+import { makeViewSource, resolveServerUrl } from "../lib/backend.js";
 
 /** Re-run the inspection + identity checks and print findings. Changes nothing. */
 export async function runDoctor(): Promise<void> {
@@ -31,8 +32,34 @@ export async function runDoctor(): Promise<void> {
     return;
   }
   console.log(`ccshare cfg:  ${configPath()}`);
-  console.log(`storage:      ${cfg.storage.driver} ${cfg.storage.url}`);
   console.log(`name:         ${cfg.name}`);
+  console.log(`mode:         ${cfg.mode}`);
+
+  if (cfg.mode === "shared") {
+    const serverUrl = resolveServerUrl(cfg);
+    console.log(`server:       ${serverUrl}`);
+    console.log(
+      cfg.server?.token
+        ? "server auth:  token present"
+        : "server auth:  no token — re-run `ccshare init`"
+    );
+    try {
+      const res = await fetch(new URL("/healthz", serverUrl));
+      console.log(res.ok ? "server ping:  ok" : `server ping:  answered ${res.status}`);
+    } catch (err) {
+      console.log(`server ping:  unreachable (${(err as Error).message})`);
+    }
+    if (cfg.server?.token) {
+      try {
+        const view = await makeViewSource(cfg).fetchView();
+        console.log(`ledger:       ok (${view.users.length} member(s))`);
+      } catch (err) {
+        console.log(`ledger:       unreachable (${(err as Error).message})`);
+      }
+    }
+    return;
+  }
+  console.log(`storage:      ${cfg.storage?.driver} ${cfg.storage?.url}`);
 
   const storage = makeStorage(cfg);
   try {

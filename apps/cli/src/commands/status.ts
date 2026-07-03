@@ -12,14 +12,14 @@ import { renderStatusLines } from "../lib/status-render.js";
 export async function runStatus(): Promise<void> {
   const ctx = await requireInit();
   if (!ctx) return;
-  const { cfg, storage } = ctx;
+  const { cfg, viewSource } = ctx;
   try {
-    const vm = await gatherView(cfg, storage);
+    const vm = await gatherView(cfg, viewSource);
     const model = toDesignModel(vm, cfg.name);
     const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
     const width = process.stdout.columns ?? 70;
     for (const line of renderStatusLines(model, { width, color })) console.log(line);
   } finally {
-    await storage.close();
+    await viewSource.close();
   }
 }

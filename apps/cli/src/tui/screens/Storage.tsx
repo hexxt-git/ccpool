@@ -27,9 +27,9 @@ export function StorageScreen({
   const { isRawModeSupported } = useStdin();
   const { cols, rows } = useTermSize();
 
-  const [driver, setDriver] = useState<StorageDriver>(config.storage.driver);
-  const [url, setUrl] = useState(config.storage.url);
-  const [token, setToken] = useState(config.storage.token ?? "");
+  const [driver, setDriver] = useState<StorageDriver>(config.storage?.driver ?? "libsql");
+  const [url, setUrl] = useState(config.storage?.url ?? "");
+  const [token, setToken] = useState(config.storage?.token ?? "");
   const [row, setRow] = useState(0);
   const [editing, setEditing] = useState(false);
   const [buf, setBuf] = useState("");

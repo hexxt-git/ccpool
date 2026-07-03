@@ -31,15 +31,23 @@ the request path. Two facts drive the entire design:
                       │            ▼                                                        │
                       │   daemon.ts tick(): poll → detect resets → ingest → write state    │
                       │            │                         │                              │
-                      │     state.json (atomic)         shared DB (samples + messages)      │
+                      │     state.json (atomic)      IngestSink.ingest(ONE batch/tick)      │
                       └────────────┼─────────────────────────┼─────────────────────────────┘
-                                   │                          │
-                  statusline ◄─────┘    tui / status ◄┴─ gatherView() + attributeShares() + summarizeMembers()
-                  (reads state only)    (DB everyone-included: deltas → per-person split, tokens, active)
+                                   │            ┌────────────┴────────────┐
+                                   │        selfhost                   shared
+                                   │     shared DB (adapter)     ccshare server (HTTP)
+                                   │            │                  one schema per group
+                                   │            └────────────┬────────────┘
+                  statusline ◄─────┘    tui / status ◄─ ViewSource.fetchView() → SharedView
+                  (reads state only)    (computeSharedView = attributeShares + summarizeMembers,
+                                         cached by change token; recomputed only on change)
 ```
 
-No process talks to another process. The contract is **files and the database
-only**: the daemon writes `state.json` and the DB; readers read them.
+No process talks to another process. The contract is **files plus one backend**:
+the daemon writes `state.json` and sends each tick as one `IngestSink` batch;
+readers pull the precomputed `SharedView` through a `ViewSource`. The backend is
+either a database the group hosts itself ("selfhost") or the multi-tenant ccshare
+server ("shared" — see §13).
 
 ---
 
@@ -144,6 +152,12 @@ Only a **hydrated** (onboarded) account has a real `accountUuid`; an unhydrated 
 account (the `user-<hash>` fallback) never triggers a conflict and never binds — the
 binding is claimed later, one-way (`null → accountUuid`), so onboarding can't trip a
 false mismatch.
+
+In **shared hosting** (§13) the same rule is enforced server-side: a group is a
+ledger bound at creation (creating one _requires_ a hydrated account, so there is no
+unbound state to claim), and `/v1/ingest` answers **409 `account-conflict`** —
+writing nothing — when a tick's `accountId` doesn't match the group's. The daemon
+maps that 409 onto the same halt-and-flag behavior.
 
 ---
 
@@ -347,14 +361,15 @@ async tick(): Promise<{ pollFailed: boolean }> {
   const account = await resolveAccount(configDir);
   const creds = await readCredentials(configDir);
   let tokenExpired = false, pollFailed = false, samples = this.prev;
+  const batch = emptyBatch();                          // ONE ledger write per tick
 
   if (!creds || isTokenExpired(creds)) {
     tokenExpired = true;                              // skip poll; not an error
   } else {
     try {
       const fresh = await pollUsage(creds.accessToken);
-      for (const e of detectResets(this.prev, fresh)) await storage.recordReset(e);
-      for (const s of fresh) await storage.recordUsageSample(s);   // dense trajectory
+      batch.resets.push(...detectResets(this.prev, fresh));
+      batch.samples.push(...fresh);                    // dense trajectory
       samples = fresh; this.prev = fresh;
     } catch (err) {
       if (err instanceof UsageAuthError) tokenExpired = true;      // 401 → treat as expiry
@@ -364,33 +379,50 @@ async tick(): Promise<{ pollFailed: boolean }> {
 
   // independent of the poll outcome:
   const rows = await this.reader.collectNew(await this.currentName());
-  if (rows.length) await storage.recordMessageUsage(rows);
+  batch.messages.push(...rows);
 
   // a tank rise this tick with no message, but this machine was driving Code in the
-  // last few minutes → record an activity marker so the rise isn't lost to unknown (§7)
+  // last few minutes → an activity marker so the rise isn't lost to unknown (§7)
   if (!rows.length && caps rose && recent local activity)
-    await storage.recordUsageMarker({ user, at: nowIso, model, weight });
+    batch.markers.push({ user, at: nowIso, model, weight });
+
+  // ONE write: merged with a previously failed batch (uuid/id dedup makes the
+  // re-send safe); AccountConflictError → flag the conflict, drop the batch (§1.5)
+  const toSend = this.pending ? mergeBatches(this.pending, batch) : batch;
+  try { await sink.ingest(toSend, { at: nowIso, accountId }); this.pending = null; }
+  catch (err) {
+    if (err instanceof AccountConflictError) { accountConflict = true; this.pending = null; }
+    else { this.pending = toSend; pollFailed = true; }   // retry next tick
+  }
 
   await atomicWriteJson(paths.stateFile, buildLocalState({
-    accountId: account?.id ?? null, tokenExpired, samples,
+    accountId: account?.id ?? null, tokenExpired, accountConflict, samples,
     pid: process.pid, startedAt: this.startedAt, now: nowIso,
   }));
   return { pollFailed };
 }
 ```
 
-Two details worth noting:
+Details worth noting:
 
 - A **sample is recorded every tick**, even if the tank didn't change. That dense
   trajectory is what attribution (§7) needs to align tank rises with activity.
+- Everything observed lands in **one `TickBatch`** and one `sink.ingest` call —
+  one DB transaction in selfhost mode, one `POST /v1/ingest` in shared mode. The
+  batch also bumps the ledger's change token exactly once (§8.5).
+- A **failed ingest keeps the batch** and merges it into the next tick's (bounded,
+  newest rows win), so a transient outage never silently drops transcript rows —
+  messages and markers are idempotent on uuid/id, so the re-send can't double-count.
 - `currentName()` is resolved **fresh each tick** (re-reads config), so handing the
   machine to another person with `ccshare config set name alex` takes effect
   without restarting the daemon.
-- An **activity marker** is written only when the tank rose but no message was
+- An **activity marker** is added only when the tank rose but no message was
   ingested this tick _and_ this machine produced Code activity within the last few
   minutes — the daemon's local view of a lagged/uncaptured rise it can honestly
-  claim for its user (§7). It's skipped on an account conflict, like every other
-  ledger write (§1.5).
+  claim for its user (§7). The whole batch is dropped on an account conflict (§1.5).
+- Startup runs `sink.bootstrap()`: it heals the schema (selfhost), reports the
+  ledger's bound account, and seeds `prev` with the latest stored samples so a
+  reset that happened while the daemon was down is caught on the first poll.
 
 ### The run loop — jitter and backoff
 
@@ -611,40 +643,66 @@ by the interval's delta — a world better than the whole tank.
 ## 8. The view model — what `status` and `tui` render
 
 Both surfaces render from one model, assembled by `gatherView`. It prefers the
-**shared DB** (everyone-included), falls back to the local **`state.json`** (instant,
-no network), and finally to a one-shot **live poll** so the view is never empty
-before the daemon's first write:
+**shared backend** (everyone-included), falls back to the local **`state.json`**
+(instant, no network), and finally to a one-shot **live poll** so the view is never
+empty before the daemon's first write.
+
+The heavy half — the raw-row reads plus attribution — lives in core as
+`computeSharedView` and produces the compact **`SharedView`** (latest samples,
+shares, member rollups, and the roster — a few KB, never raw rows):
 
 ```ts
-// apps/cli/src/lib/view.ts  (abridged)
+// packages/core/src/state/view.ts  (abridged)
 const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-const [latest, samplesSince, messagesSince, resetsSince] = await Promise.all([
+const [latest, samplesSince, messagesSince, resetsSince, users] = await Promise.all([
   storage.getLatestSamples(), // the header bars
   storage.getUsageSamplesSince(since), // the trajectory, for attribution
   storage.getMessageUsageSince(since), // everyone's measured activity
   storage.getResetsSince(since), // reset events bound the window (§7)
+  storage.getUsers(), // the roster
 ]);
 // Fetch markers defensively — a DB missing the table for any reason degrades to
 // "no markers" rather than letting one missing table blank the whole view.
 const markersSince = await storage.getUsageMarkersSince(since).catch(() => []);
-const shares = attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince); // §7
-const members = summarizeMembers(messagesSince); // per-name token totals + last-seen
-const account = await resolveEmail(configDir); // oauthAccount.emailAddress, cached ~1/min
-
-let samples = latest,
-  source = latest.length ? "db" : "none";
-if (!samples.length && state?.samples.length) {
-  samples = state.samples;
-  source = "state";
-}
-if (!samples.length) {
-  const live = await tryLivePoll(configDir);
-  if (live) {
-    samples = live;
-    source = "live";
-  }
-}
+return {
+  generatedAt,
+  samples: latest,
+  shares: attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince), // §7
+  members: summarizeMembers(messagesSince), // per-name token totals + last-seen
+  users,
+};
 ```
+
+`gatherView` (apps/cli) wraps a `ViewSource.fetchView()` in the local decoration —
+daemon pid, `state.json` fallback, live-poll fallback, the cached account email —
+exactly as before.
+
+### 8.5 The watermark — why a 2s refresh is cheap
+
+The TUI refreshes every 2 seconds, but the ledger changes at most about once per
+minute (the daemon cadence). Re-reading a 7-day window of samples (~30k rows) and
+re-running attribution on every refresh was the original cost problem — hundreds of
+thousands of heavy queries a day per viewer. The fix is a **write watermark**:
+
+- Every ledger mutation (`recordBatch`, `upsertUser`, `prune`) bumps a single
+  counter, `ccshare_meta.writeSeq`, **inside the same transaction**. Reading it
+  (`getChangeToken`) is one single-row SELECT.
+- A computed view is cached under `viewCacheKey(token, now)` — the token plus a
+  **60-second time bucket**. The bucket exists because `attributeShares` windows
+  slide with `now`: without it, a group whose daemons stopped writing would be
+  served a frozen split forever. Worst case is one recompute per minute even with
+  zero writes; a healthy group writes ~1/min anyway, so the bucket adds ~nothing.
+- **Selfhost:** `StorageViewSource.fetchView()` does the 1-row token read; only a
+  changed key re-runs `computeSharedView`. The heavy read drops from every-2s to
+  ~1/min per viewer (~30×), and `reset_events` scans sit behind a real index now.
+- **Shared:** the same key doubles as the **ETag** of `GET /v1/view`. The client
+  sends `If-None-Match`; the steady-state answer is a bodyless **304** backed by
+  one single-row SELECT on the server. Only a real change re-sends the few-KB view
+  (§13).
+
+Retention rides the same path: rows older than the widest cap window (+1 day of
+slack — `RETENTION_MS`, 8 days) can never influence a view again, so the sink
+prunes them on a throttled sweep and every table stays bounded.
 
 `toDesignModel` flattens this into one presentation model: **caps** (the header
 bars) and **members** (each person's per-window share, joined with their token
@@ -660,11 +718,12 @@ Two surfaces render that model:
   columns (the per-member bar, then trailing caps) on narrower terminals. Bar colour
   comes from a calculated green→red ramp (`heat.ts`, hue 120°→0° in HSL); each
   member's bar matches their name colour.
-- **`tui`** re-runs `gatherView` every 2s (and ticks the clock every 1s so
-  countdowns move), rendering the same model through one of three interchangeable
-  Ink layouts — **overview · split · mono**, cycled with **Tab** (Shift+Tab
-  reverses) — adding per-person token totals and scrolling for large groups. The
-  views fill the terminal width and reflow live on resize (`useTermSize`).
+- **`tui`** re-runs `gatherView` every 2s (cheap — §8.5; the clock ticks every 1s
+  so countdowns move), rendering the same model through one of three
+  interchangeable Ink layouts — **overview · split · mono**, cycled with **Tab**
+  (Shift+Tab reverses) — adding per-person token totals and scrolling for large
+  groups. The views fill the terminal width and reflow live on resize
+  (`useTermSize`).
 
 Bare **`ccshare`** opens a **TUI-first shell** (`tui/Root.tsx`): unconfigured, it
 lands on a guided onboarding wizard (the interactive form of `init`); configured, it
@@ -698,48 +757,57 @@ members
 
 ---
 
-## 9. Storage — the swappable boundary
+## 9. Storage — the swappable boundary (and the layer above it)
 
-Everything above talks to one async interface; the concrete adapter is chosen from
-config in a single place:
+Two boundaries stack here. The **outer** one is what commands compose
+(`apps/cli/src/lib/backend.ts`): the daemon writes through an `IngestSink`, views
+read through a `ViewSource`, and the config's `mode` picks the implementation —
 
 ```ts
-function makeStorage(cfg: Config): Storage {
-  switch (cfg.storage.driver) {
-    case "libsql":
-    case "sqlite":
-      return new LibsqlStorage(cfg.storage.url, cfg.storage.token);
-    case "postgres":
-      return new PostgresStorage(cfg.storage.url);
-    case "memory":
-      return new MemoryStorage();
-  }
+function makeIngestSink(cfg: Config): IngestSink {
+  if (cfg.mode === "shared") return new HttpIngestSink(serverUrl, bearer); // §13
+  return new StorageIngestSink(makeStorage(cfg));
+}
+function makeViewSource(cfg: Config): ViewSource {
+  if (cfg.mode === "shared") return new HttpViewSource(serverUrl, bearer); // §13
+  return new StorageViewSource(makeStorage(cfg)); // watermark-cached (§8.5)
 }
 ```
 
-The interface is deliberately dumb — record/query rows, no business logic:
+The **inner** boundary is `Storage` — still deliberately dumb (rows in, rows out,
+no business logic), chosen from config in a single place (`makeStorage`:
+libsql/sqlite → `LibsqlStorage`, postgres → `PostgresStorage`, memory →
+`MemoryStorage`):
 
 ```ts
 interface Storage {
   inspect(): Promise<DbInspection>; // empty | ccshare | foreign
-  initializeSchema(): Promise<void>;
-  recordUsageSample(s): Promise<void>;
+  initializeSchema(accountId?): Promise<void>;
+  bindAccount(accountId): Promise<void>; // claim an unbound ledger (§1.5)
+  migrate(toVersion): Promise<void>;
+
+  upsertUser(name); // bumps the change token
+  getUsers();
+
+  recordBatch(batch: TickBatch): Promise<void>; // ONE atomic write per tick:
+  //   samples + resets appended, messages/markers idempotent on uuid/id,
+  //   change token bumped once
+  prune(before): Promise<void>; // retention: delete rows older than `before`
+  getChangeToken(): Promise<string>; // 1-row read; the §8.5 cache key input
+
   getLatestSamples(): Promise<UsageSample[]>;
   getUsageSamplesSince(since): Promise<UsageSample[]>; // trajectory for attribution
-  recordReset(e): Promise<void>;
-  getResetsSince(since): Promise<ResetEvent[]>; // window bounds for attribution
-  recordMessageUsage(rows): Promise<void>; // idempotent on uuid
+  getResetsSince(since): Promise<ResetEvent[]>; // window bounds (indexed on `at`)
   getMessageUsageSince(since): Promise<MessageUsage[]>;
-  recordUsageMarker(m): Promise<void>; // idempotent on id (§7 activity markers)
-  getUsageMarkersSince(since): Promise<UsageMarker[]>;
-  upsertUser(name);
-  getUsers();
-  // …
+  getUsageMarkersSince(since): Promise<UsageMarker[]>; // §7 activity markers
 }
 ```
 
-A single **contract test suite** runs against the memory, libSQL, and Postgres
-adapters, which is what proves both swappability and the clean-DB rules below.
+`recordBatch` is one transaction (`sql.begin` in Postgres, `client.batch` in
+libSQL), so a tick is all-or-nothing and bumps `writeSeq` exactly once. A single
+**contract test suite** runs against the memory, libSQL, and Postgres adapters,
+which is what proves swappability, the batching/dedup/prune semantics, the change
+token, and the clean-DB rules below.
 
 ### Init inspection — clean DB enforcement
 
@@ -766,11 +834,8 @@ missing a column still reads (the absent column comes back as `null`).
 
 ccshare deliberately has **no budgets, targets, or quotas**. It reports the reality
 of who used what and leaves it to the group to coordinate how much anyone should
-use — the tool never prescribes or enforces a share.
-
-> The `budgets` table is still created by `initializeSchema` (empty, never read or
-> written) purely so an older CLI that predates the feature's removal can still join
-> a freshly created database. No current code touches it.
+use — the tool never prescribes or enforces a share. (The retired `budgets` table
+was dropped from the schema baseline when v1 was redefined pre-production.)
 
 ---
 
@@ -799,35 +864,106 @@ The same code runs on **Node (≥20) and Bun**, so it avoids native-only modules
 - The only runtime branch is `spawnDetached` (Bun.spawn vs `child_process`),
   isolated to one function.
 
-CI runs the entire suite twice — once on Node, once on Bun — and the storage
-contract suite additionally runs against a real Postgres.
+CI runs the entire suite twice — once on Node, once on Bun — and the
+Postgres-gated suites (storage contract + server integration) additionally run
+against a real Postgres.
+
+---
+
+## 13. Shared hosting — the server, tenancy, and the two-password model
+
+Self-hosting requires the group to run a database and hand every member its
+credentials — which also means every member can read and write **anything**,
+including usage rows under someone else's name. Shared hosting removes both the
+infrastructure and that trust requirement: the CLI ships with a **hardcoded server
+URL** (`CCSHARE_SERVER_URL` overrides it for dev/self-hosted servers), and members
+authenticate instead of connecting.
+
+### The trust model — two passwords
+
+Joining a group takes exactly two secrets:
+
+- the **group password** — shared by the whole group; proves a machine may join at
+  all;
+- a **member password** — personal; set the first time a name joins, required
+  forever after to use that name. Taking an existing name without its password is
+  refused (the anti-impersonation check), so `ccshare config set name <other>` in
+  shared mode is a real **login**.
+
+The group itself is located (and bound, §1.5) by the Claude `accountUuid`, resolved
+locally from `~/.claude.json` — never typed, never guessable from the outside
+alone. A successful join/login mints a **bearer token** (`ccs_…`), returned once
+and stored client-side in the 0600 `~/.ccshare/token` file; the server keeps only
+its sha256 hash. Passwords are stored as salted **scrypt** hashes
+(`scrypt:N:r:p:salt:hash`, self-describing so parameters can be raised without
+migrating rows) — `node:crypto` only, no native deps. Password endpoints sit
+behind an in-memory per-(IP, account) failure damper, and the CLI refuses plain
+`http://` for anything but localhost so a bearer never travels unencrypted.
+
+### What the server enforces (that self-host can't)
+
+Every ingested row's `user` is **overwritten with the authenticated member's
+name** — the payload's name field is untrusted. Combined with the member password,
+this means a member can misreport at most _their own_ share (by not running the
+daemon), never inflate someone else's.
+
+### Tenancy — one Postgres schema per group
+
+The server is multi-tenant but the `Storage` boundary never learns that: each
+group's ledger is a plain ccshare database living in its own Postgres schema
+(`grp_<uuid>`), reached through the **unchanged `PostgresStorage` adapter** via
+`search_path`. Per group, the server composes the very same core pieces the
+self-host CLI uses — `StorageIngestSink` + `StorageViewSource` — so ingest
+semantics, attribution, watermark caching, migration, and pruning are one code
+path everywhere. The server-owned **registry** (groups / members / tokens) lives
+in ordinary tables outside the `Storage` interface. Tenant pools are small
+(max 2, aggressive idle reap) and LRU-capped.
+
+### The API surface
+
+| Endpoint               | Auth      | Purpose                                                                  |
+| ---------------------- | --------- | ------------------------------------------------------------------------ |
+| `POST /v1/groups`      | passwords | create the group (409 if the account already has one) → token            |
+| `POST /v1/groups/join` | passwords | join: group password + new-name password set / existing verified → token |
+| `POST /v1/login`       | passwords | re-auth an existing member (member password only) → token                |
+| `POST /v1/ingest`      | bearer    | one daemon tick; names stamped server-side; 409 on account conflict      |
+| `GET /v1/bootstrap`    | bearer    | daemon startup seed: bound account + latest samples                      |
+| `GET /v1/view`         | bearer    | the `SharedView`, ETag'd — steady-state polls are bodyless 304s (§8.5)   |
+
+The wire shapes live in `packages/core/src/remote/api.ts` and are imported by both
+the server (`apps/server`) and the client (`CcshareClient` / `HttpIngestSink` /
+`HttpViewSource` in `packages/core/src/remote/client.ts`), so they cannot drift.
 
 ---
 
 ## Appendix — edge cases the algorithm bakes in
 
-| Situation                                  | Behavior                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------------------- |
-| Tank already high when daemon starts       | That level is `unknown`'s baseline (§7).                                              |
-| Mobile / web / chat usage                  | Tank rises with no Code activity → `unknown` (§7).                                    |
-| Daemon was down during usage               | Those messages aren't in the DB → that rise → `unknown`.                              |
-| Resume/compaction re-prime or lagged tail  | Local rise with no in-interval message → daemon marks it for its recent user (§7).    |
-| Access token expired                       | Skip the poll; keep ingesting + writing state (§5).                                   |
-| 401 with a non-expired token (clock skew)  | Treat like expiry; don't back off.                                                    |
-| Network error                              | Exponential backoff (cap 5m), jittered; ingest still runs.                            |
-| Mid-week out-of-band reset                 | Detected by pct-drop, never by `resets_at` (§3).                                      |
-| Same request logged on several lines       | Dedup by `requestId` so it's counted once (§4).                                       |
-| Partial trailing JSONL line                | Offset stops at the last newline; resumed next tick (§4).                             |
-| Daemon restart                             | Re-baseline transcripts at EOF — no backfill (§4).                                    |
-| `weekly-opus` not on the plan (`null`)     | Skipped, not rendered as 0% (§2).                                                     |
-| Cap with a `NaN`/`Infinity` utilization    | Skipped like a `null` cap; never poisons the trajectory (§2).                         |
-| Two people, one machine                    | Hand off with `config set name`; applied next tick (§11).                             |
-| DB unreachable mid-run                     | Serve last-known from `state.json` with a stale badge (§8).                           |
-| Machine signed into a different account    | `init` refuses; a running daemon halts ledger writes + flags a conflict (§1.5).       |
-| Ledger created before onboarding (unbound) | Bound to the first hydrated account that joins; one-way (§1.5).                       |
-| Corrupt/negative token count in a line     | Clamped to 0 so it can't invert the weighted split (§4, §7).                          |
-| Message timestamped in the future          | Never matches an interval → its rise falls to `unknown` (§7).                         |
-| Downward pct correction (not a reset)      | May register as a reset above `epsilon`; rare, pct-drop still beats `resets_at` (§3). |
+| Situation                                  | Behavior                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Tank already high when daemon starts       | That level is `unknown`'s baseline (§7).                                                                              |
+| Mobile / web / chat usage                  | Tank rises with no Code activity → `unknown` (§7).                                                                    |
+| Daemon was down during usage               | Those messages aren't in the DB → that rise → `unknown`.                                                              |
+| Resume/compaction re-prime or lagged tail  | Local rise with no in-interval message → daemon marks it for its recent user (§7).                                    |
+| Access token expired                       | Skip the poll; keep ingesting + writing state (§5).                                                                   |
+| 401 with a non-expired token (clock skew)  | Treat like expiry; don't back off.                                                                                    |
+| Network error                              | Exponential backoff (cap 5m), jittered; ingest still runs.                                                            |
+| Mid-week out-of-band reset                 | Detected by pct-drop, never by `resets_at` (§3).                                                                      |
+| Same request logged on several lines       | Dedup by `requestId` so it's counted once (§4).                                                                       |
+| Partial trailing JSONL line                | Offset stops at the last newline; resumed next tick (§4).                                                             |
+| Daemon restart                             | Re-baseline transcripts at EOF — no backfill (§4).                                                                    |
+| `weekly-opus` not on the plan (`null`)     | Skipped, not rendered as 0% (§2).                                                                                     |
+| Cap with a `NaN`/`Infinity` utilization    | Skipped like a `null` cap; never poisons the trajectory (§2).                                                         |
+| Two people, one machine                    | Hand off with `config set name`; applied next tick (§11).                                                             |
+| DB unreachable mid-run                     | Serve last-known from `state.json` with a stale badge (§8).                                                           |
+| Machine signed into a different account    | `init` refuses; a running daemon halts ledger writes + flags a conflict (§1.5).                                       |
+| Ledger created before onboarding (unbound) | Bound to the first hydrated account that joins; one-way (§1.5). Selfhost only — shared groups bind at creation (§13). |
+| Server unreachable mid-run (shared mode)   | Same as DB unreachable: `state.json` + stale badge; failed batches retry next tick (§5, §8).                          |
+| Ingest 409 (wrong account, shared mode)    | Nothing written; daemon flags `account.conflict` and drops the batch (§1.5, §13).                                     |
+| Joining an existing name, wrong password   | Refused (401) — names are impersonation-protected in shared mode (§13).                                               |
+| Transient ingest failure (network blip)    | The tick's batch is kept and merged into the next tick; uuid/id dedup makes the re-send safe (§5).                    |
+| Corrupt/negative token count in a line     | Clamped to 0 so it can't invert the weighted split (§4, §7).                                                          |
+| Message timestamped in the future          | Never matches an interval → its rise falls to `unknown` (§7).                                                         |
+| Downward pct correction (not a reset)      | May register as a reset above `epsilon`; rare, pct-drop still beats `resets_at` (§3).                                 |
 
 ```
 

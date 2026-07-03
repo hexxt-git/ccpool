@@ -2,6 +2,7 @@ import postgres, { type Sql } from "postgres";
 import { randomUUID } from "node:crypto";
 import {
   CAP_KINDS,
+  isEmptyBatch,
   SCHEMA_VERSION,
   UNKNOWN_USER,
   type CapKind,
@@ -9,12 +10,25 @@ import {
   type MessageUsage,
   type ResetEvent,
   type Storage,
+  type TickBatch,
   type UsageMarker,
   type UsageSample,
   type User,
 } from "@ccshare/core";
 
 export const DRIVER = "postgres" as const;
+
+export interface PostgresStorageOptions {
+  /**
+   * Confine this instance to a named schema (its `search_path`). The multi-tenant
+   * server gives every group its own schema and reuses this adapter unchanged.
+   */
+  schema?: string;
+  /** Pool size — the server keeps this small (many tenants, one pool each). */
+  max?: number;
+  /** Seconds an idle pooled connection lives before being reaped. */
+  idleTimeoutSecs?: number;
+}
 
 /**
  * Second Storage adapter, proving the boundary: flipping `storage.driver` moves a
@@ -24,8 +38,13 @@ export const DRIVER = "postgres" as const;
 export class PostgresStorage implements Storage {
   private sql: Sql;
 
-  constructor(url: string) {
-    this.sql = postgres(url, { onnotice: () => {} });
+  constructor(url: string, opts: PostgresStorageOptions = {}) {
+    this.sql = postgres(url, {
+      onnotice: () => {},
+      ...(opts.schema ? { connection: { search_path: opts.schema } } : {}),
+      ...(opts.max !== undefined ? { max: opts.max } : {}),
+      ...(opts.idleTimeoutSecs !== undefined ? { idle_timeout: opts.idleTimeoutSecs } : {}),
+    });
   }
 
   async inspect(): Promise<DbInspection> {
@@ -35,7 +54,7 @@ export class PostgresStorage implements Storage {
     const tables = new Set(rows.map((r) => r.table_name));
     if (tables.size === 0) return { kind: "empty" };
     if (tables.has("ccshare_meta")) {
-      // SELECT * so a pre-v2 DB without `accountId` still reads (undefined key).
+      // SELECT * so a DB from another build still reads (missing key -> undefined).
       const meta = await this.sql<
         { schemaVersion: number; accountId?: string | null }[]
       >`SELECT * FROM ccshare_meta LIMIT 1`;
@@ -55,13 +74,14 @@ export class PostgresStorage implements Storage {
     await this.sql.begin(async (tx) => {
       await tx`CREATE TABLE IF NOT EXISTS ccshare_meta (
         app TEXT NOT NULL, "schemaVersion" INTEGER NOT NULL,
-        "projectId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "accountId" TEXT)`;
+        "projectId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "accountId" TEXT,
+        "writeSeq" BIGINT NOT NULL DEFAULT 0)`;
       await tx`CREATE TABLE IF NOT EXISTS users (
         name TEXT PRIMARY KEY, "createdAt" TEXT NOT NULL)`;
       await tx`CREATE TABLE IF NOT EXISTS usage_samples (
         cap TEXT NOT NULL, pct DOUBLE PRECISION NOT NULL,
         "resetsAt" TEXT, "capturedAt" TEXT NOT NULL)`;
-      await tx`CREATE INDEX IF NOT EXISTS idx_usage_samples_cap
+      await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_samples_cap
         ON usage_samples (cap, "capturedAt")`;
       await tx`CREATE TABLE IF NOT EXISTS message_usage (
         uuid TEXT PRIMARY KEY, "user" TEXT NOT NULL, timestamp TEXT NOT NULL, model TEXT,
@@ -76,14 +96,12 @@ export class PostgresStorage implements Storage {
         ON usage_markers (at)`;
       await tx`CREATE TABLE IF NOT EXISTS reset_events (
         cap TEXT NOT NULL, at TEXT NOT NULL, "previousPct" DOUBLE PRECISION NOT NULL)`;
-      // The budgets feature was retired; the table is still created so an older
-      // CLI that predates the removal can join a fresh DB without erroring. It is
-      // never read or written by current code.
-      await tx`CREATE TABLE IF NOT EXISTS budgets (
-        name TEXT NOT NULL, cap TEXT NOT NULL, "sharePct" DOUBLE PRECISION NOT NULL,
-        PRIMARY KEY (name, cap))`;
-      await tx`INSERT INTO ccshare_meta (app, "schemaVersion", "projectId", "createdAt", "accountId")
-        VALUES ('ccshare', ${SCHEMA_VERSION}, ${randomUUID()}, ${new Date().toISOString()}, ${accountId})`;
+      await tx`CREATE INDEX IF NOT EXISTS idx_reset_events_at
+        ON reset_events (at)`;
+      await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq
+        ON reset_events (cap, at)`;
+      await tx`INSERT INTO ccshare_meta (app, "schemaVersion", "projectId", "createdAt", "accountId", "writeSeq")
+        VALUES ('ccshare', ${SCHEMA_VERSION}, ${randomUUID()}, ${new Date().toISOString()}, ${accountId}, 0)`;
     });
   }
 
@@ -93,10 +111,23 @@ export class PostgresStorage implements Storage {
   }
 
   async migrate(toVersion: number): Promise<void> {
-    // v1 is the baseline — the full schema is created by initializeSchema, so
-    // there are no historical steps. Kept for the interface and for future
-    // additive migrations (add idempotent ALTER/CREATE steps here then).
-    await this.sql`UPDATE ccshare_meta SET "schemaVersion" = ${toVersion}`;
+    // v2: make usage_samples/reset_events idempotent on their natural keys.
+    // Additive and idempotent — dedup any rows an older build's retries may have
+    // duplicated (keep the earliest physical row by ctid), then add the unique
+    // indexes. The old non-unique idx_usage_samples_cap is dropped so its name can
+    // be reused for the unique one. Safe to run more than once.
+    await this.sql.begin(async (tx) => {
+      await tx`DELETE FROM usage_samples a USING usage_samples b
+        WHERE a.ctid < b.ctid AND a.cap = b.cap AND a."capturedAt" = b."capturedAt"`;
+      await tx`DROP INDEX IF EXISTS idx_usage_samples_cap`;
+      await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_samples_cap
+        ON usage_samples (cap, "capturedAt")`;
+      await tx`DELETE FROM reset_events a USING reset_events b
+        WHERE a.ctid < b.ctid AND a.cap = b.cap AND a.at = b.at`;
+      await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq
+        ON reset_events (cap, at)`;
+      await tx`UPDATE ccshare_meta SET "schemaVersion" = ${toVersion}`;
+    });
   }
 
   async close(): Promise<void> {
@@ -104,9 +135,12 @@ export class PostgresStorage implements Storage {
   }
 
   async upsertUser(name: string): Promise<void> {
-    await this.sql`INSERT INTO users (name, "createdAt")
-      VALUES (${name}, ${new Date().toISOString()})
-      ON CONFLICT (name) DO NOTHING`;
+    await this.sql.begin(async (tx) => {
+      await tx`INSERT INTO users (name, "createdAt")
+        VALUES (${name}, ${new Date().toISOString()})
+        ON CONFLICT (name) DO NOTHING`;
+      await tx`UPDATE ccshare_meta SET "writeSeq" = "writeSeq" + 1`;
+    });
   }
 
   async getUsers(): Promise<User[]> {
@@ -115,9 +149,57 @@ export class PostgresStorage implements Storage {
     return rows.map((r) => ({ name: r.name, createdAt: r.createdAt }));
   }
 
-  async recordUsageSample(s: UsageSample): Promise<void> {
-    await this.sql`INSERT INTO usage_samples (cap, pct, "resetsAt", "capturedAt")
-      VALUES (${s.cap}, ${s.pct}, ${s.resetsAt}, ${s.capturedAt})`;
+  async recordBatch(batch: TickBatch): Promise<void> {
+    if (isEmptyBatch(batch)) return;
+    await this.sql.begin(async (tx) => {
+      for (const s of batch.samples) {
+        await tx`INSERT INTO usage_samples (cap, pct, "resetsAt", "capturedAt")
+          VALUES (${s.cap}, ${s.pct}, ${s.resetsAt}, ${s.capturedAt})
+          ON CONFLICT (cap, "capturedAt") DO NOTHING`;
+      }
+      for (const e of batch.resets) {
+        await tx`INSERT INTO reset_events (cap, at, "previousPct")
+          VALUES (${e.cap}, ${e.at}, ${e.previousPct})
+          ON CONFLICT (cap, at) DO NOTHING`;
+      }
+      for (const m of batch.messages) {
+        await tx`INSERT INTO message_usage
+          (uuid, "user", timestamp, model, "inputTokens", "outputTokens",
+           "cacheCreationTokens", "cacheReadTokens")
+          VALUES (${m.uuid}, ${m.user}, ${m.timestamp}, ${m.model},
+            ${m.inputTokens}, ${m.outputTokens}, ${m.cacheCreationTokens}, ${m.cacheReadTokens})
+          ON CONFLICT (uuid) DO NOTHING`;
+      }
+      for (const m of batch.markers) {
+        await tx`INSERT INTO usage_markers (id, "user", at, model, weight)
+          VALUES (${m.id}, ${m.user}, ${m.at}, ${m.model}, ${m.weight})
+          ON CONFLICT (id) DO NOTHING`;
+      }
+      await tx`UPDATE ccshare_meta SET "writeSeq" = "writeSeq" + 1`;
+    });
+  }
+
+  async prune(before: string): Promise<void> {
+    await this.sql.begin(async (tx) => {
+      await tx`DELETE FROM usage_samples WHERE "capturedAt" < ${before}`;
+      await tx`DELETE FROM reset_events WHERE at < ${before}`;
+      await tx`DELETE FROM message_usage WHERE timestamp < ${before}`;
+      await tx`DELETE FROM usage_markers WHERE at < ${before}`;
+      await tx`UPDATE ccshare_meta SET "writeSeq" = "writeSeq" + 1`;
+    });
+  }
+
+  async getChangeToken(): Promise<string> {
+    try {
+      const rows = await this.sql<{ writeSeq: string | number }[]>`
+        SELECT "writeSeq" FROM ccshare_meta LIMIT 1`;
+      return String(rows[0]?.writeSeq ?? 0);
+    } catch (err) {
+      throw new Error(
+        "this database predates the current schema (no writeSeq) — re-run `ccshare init`",
+        { cause: err }
+      );
+    }
   }
 
   async getLatestSamples(): Promise<UsageSample[]> {
@@ -150,11 +232,6 @@ export class PostgresStorage implements Storage {
     }));
   }
 
-  async recordReset(e: ResetEvent): Promise<void> {
-    await this.sql`INSERT INTO reset_events (cap, at, "previousPct")
-      VALUES (${e.cap}, ${e.at}, ${e.previousPct})`;
-  }
-
   async getResetsSince(since: string): Promise<ResetEvent[]> {
     const rows = await this.sql<{ cap: string; at: string; previousPct: number }[]>`
       SELECT cap, at, "previousPct" FROM reset_events WHERE at >= ${since} ORDER BY at ASC`;
@@ -163,20 +240,6 @@ export class PostgresStorage implements Storage {
       at: r.at,
       previousPct: Number(r.previousPct),
     }));
-  }
-
-  async recordMessageUsage(rows: MessageUsage[]): Promise<void> {
-    if (rows.length === 0) return;
-    await this.sql.begin(async (tx) => {
-      for (const m of rows) {
-        await tx`INSERT INTO message_usage
-          (uuid, "user", timestamp, model, "inputTokens", "outputTokens",
-           "cacheCreationTokens", "cacheReadTokens")
-          VALUES (${m.uuid}, ${m.user}, ${m.timestamp}, ${m.model},
-            ${m.inputTokens}, ${m.outputTokens}, ${m.cacheCreationTokens}, ${m.cacheReadTokens})
-          ON CONFLICT (uuid) DO NOTHING`;
-      }
-    });
   }
 
   async getMessageUsageSince(since: string): Promise<MessageUsage[]> {
@@ -204,12 +267,6 @@ export class PostgresStorage implements Storage {
       cacheCreationTokens: Number(r.cacheCreationTokens),
       cacheReadTokens: Number(r.cacheReadTokens),
     }));
-  }
-
-  async recordUsageMarker(m: UsageMarker): Promise<void> {
-    await this.sql`INSERT INTO usage_markers (id, "user", at, model, weight)
-      VALUES (${m.id}, ${m.user}, ${m.at}, ${m.model}, ${m.weight})
-      ON CONFLICT (id) DO NOTHING`;
   }
 
   async getUsageMarkersSince(since: string): Promise<UsageMarker[]> {

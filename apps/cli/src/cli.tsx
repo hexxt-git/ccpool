@@ -32,13 +32,22 @@ program.action(async () => {
 
 program
   .command("init")
-  .description("required first run: pick storage, enter URL, inspect, set up or join")
-  .option("--reconfigure", "re-run storage selection against the same identity")
-  .option("--driver <driver>", "storage driver (libsql|postgres|sqlite); skips the prompt")
-  .option("--url <url>", "database URL; skips the prompt")
-  .option("--token <token>", "auth token for a remote database")
+  .description("required first run: join via shared hosting (two passwords) or self-host a DB")
+  .option("--reconfigure", "re-run the setup against the same identity")
+  .option("--mode <mode>", "shared|selfhost; skips the mode prompt")
+  .option("--driver <driver>", "self-host: storage driver (libsql|postgres|sqlite)")
+  .option("--url <url>", "self-host: database URL; skips the prompt")
+  .option("--token <token>", "self-host: auth token for a remote database")
   .option("--name <name>", "your name (letters, digits, hyphens); skips the prompt")
-  .option("-y, --yes", "auto-confirm setting up an empty database")
+  .option(
+    "--group-password <password>",
+    "shared: the group's password (prefer env CCSHARE_GROUP_PASSWORD in CI)"
+  )
+  .option(
+    "--member-password <password>",
+    "shared: your member password (prefer env CCSHARE_MEMBER_PASSWORD in CI)"
+  )
+  .option("-y, --yes", "auto-confirm the write step (init empty DB / create the group)")
   .option("--no-daemon", "don't auto-start the background observer after setup")
   .action(async (opts) => {
     await runInit(opts);

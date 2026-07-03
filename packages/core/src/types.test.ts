@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidName, UNKNOWN_USER } from "./types.js";
+import { isValidName, MAX_NAME_LENGTH, UNKNOWN_USER } from "./types.js";
 
 describe("isValidName", () => {
   // ── accepted ──────────────────────────────────────────────────────────────────
@@ -37,5 +37,11 @@ describe("isValidName", () => {
   it("still accepts names that merely contain 'unknown'", () => {
     expect(isValidName("unknown-1")).toBe(true);
     expect(isValidName("notunknown")).toBe(true);
+  });
+
+  // ── length bound ─────────────────────────────────────────────────────────────────
+  it("rejects names longer than MAX_NAME_LENGTH", () => {
+    expect(isValidName("a".repeat(MAX_NAME_LENGTH))).toBe(true);
+    expect(isValidName("a".repeat(MAX_NAME_LENGTH + 1))).toBe(false);
   });
 });

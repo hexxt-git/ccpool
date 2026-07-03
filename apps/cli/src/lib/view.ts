@@ -1,37 +1,36 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
-  attributeShares,
-  CAP_WINDOW_MS,
   isTokenExpired,
   pollUsage,
   readCredentials,
   resolveAccount,
-  summarizeMembers,
   UsageAuthError,
   type Config,
   type LocalState,
   type MemberSummary,
-  type Storage,
-  type UsageMarker,
   type UsageSample,
+  type User,
   type UserShare,
+  type ViewSource,
 } from "@ccshare/core";
 import { daemonPaths, isAlive, readPid } from "@ccshare/daemon";
 import { ccshareDir } from "./config.js";
 
-export type ViewSource = "db" | "state" | "live" | "none";
+/** Where the numbers on screen came from. */
+export type ViewOrigin = "db" | "state" | "live" | "none";
 
 /** The single model `status` and `tui` both render from (§10). */
 export interface ViewModel {
   samples: UsageSample[];
   shares: UserShare[]; // per-user rows (Phase 5); empty until then
   members: MemberSummary[]; // per-name measured activity (tokens, last seen)
-  source: ViewSource;
-  /** DB unreachable — showing last-known numbers. */
+  users: User[]; // the roster from the shared ledger
+  source: ViewOrigin;
+  /** Backend unreachable — showing last-known numbers. */
   stale: boolean;
   daemonRunning: boolean;
   tokenExpired: boolean;
-  /** This machine's Claude account differs from the DB's — daemon halted writes (§1.5). */
+  /** This machine's Claude account differs from the ledger's — daemon halted writes (§1.5). */
   accountConflict: boolean;
   /** The observed account's id/email (never the person), from local state. */
   account: string | null;
@@ -68,11 +67,13 @@ function readState(stateFile: string): LocalState | null {
 }
 
 /**
- * Assemble the live view: prefer the shared DB (everyone-included), fall back to
- * the local `state.json` (instant, no network), and finally to a one-shot live
- * poll so there's always something to show before the daemon's first write.
+ * Assemble the live view: prefer the shared backend (everyone-included), fall
+ * back to the local `state.json` (instant, no network), and finally to a
+ * one-shot live poll so there's always something to show before the daemon's
+ * first write. The heavy work lives behind `source` — a 2s refresh costs one
+ * change-token read (selfhost) or a 304 (shared) when nothing changed.
  */
-export async function gatherView(cfg: Config, storage: Storage): Promise<ViewModel> {
+export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewModel> {
   const configDir = configDirOf(cfg);
   const { stateFile, pidFile } = daemonPaths(ccshareDir(), configDir);
 
@@ -87,39 +88,24 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
   let dbSamples: UsageSample[] = [];
   let shares: UserShare[] = [];
   let members: MemberSummary[] = [];
+  let users: User[] = [];
   let stale = false;
   try {
-    const now = Date.now();
-    // pull enough history to cover the widest window, then attribute deltas
-    const since = new Date(now - CAP_WINDOW_MS.seven_day).toISOString();
-    const [latest, samplesSince, messagesSince, resetsSince] = await Promise.all([
-      storage.getLatestSamples(),
-      storage.getUsageSamplesSince(since),
-      storage.getMessageUsageSince(since),
-      storage.getResetsSince(since),
-    ]);
-    // Fetch markers defensively: a DB missing the table for any reason should
-    // degrade to "no markers", not make the whole (reachable) view look
-    // unreachable — the view still renders from samples + messages.
-    let markersSince: UsageMarker[] = [];
-    try {
-      markersSince = await storage.getUsageMarkersSince(since);
-    } catch {
-      /* no markers table — attribute without markers */
-    }
-    dbSamples = latest;
-    shares = attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince);
-    members = summarizeMembers(messagesSince);
+    const view = await source.fetchView();
+    dbSamples = view.samples;
+    shares = view.shares;
+    members = view.members;
+    users = view.users;
   } catch {
     stale = true;
   }
 
   let samples = dbSamples;
-  let source: ViewSource = dbSamples.length > 0 ? "db" : "none";
+  let origin: ViewOrigin = dbSamples.length > 0 ? "db" : "none";
 
   if (samples.length === 0 && state?.samples.length) {
     samples = state.samples;
-    source = "state";
+    origin = "state";
   }
 
   // last resort: poll the endpoint directly so the view is never empty
@@ -127,7 +113,7 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     const live = await tryLivePoll(configDir);
     if (live) {
       samples = live;
-      source = "live";
+      origin = "live";
     }
   }
 
@@ -135,7 +121,8 @@ export async function gatherView(cfg: Config, storage: Storage): Promise<ViewMod
     samples,
     shares,
     members,
-    source,
+    users,
+    source: origin,
     stale,
     daemonRunning,
     tokenExpired: state?.account.tokenExpired ?? false,

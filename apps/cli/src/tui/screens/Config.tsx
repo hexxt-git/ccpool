@@ -3,7 +3,6 @@ import { Box, Text, useInput, useStdin } from "ink";
 import { isValidName, type Config } from "@ccshare/core";
 import { saveConfig } from "../../lib/config.js";
 import { makeStorage } from "../../lib/storage.js";
-import { applySetup } from "../../lib/setup.js";
 import {
   isDaemonRunning,
   spawnDaemon,
@@ -14,7 +13,7 @@ import { Clawd, Cell, Rule } from "../designs/parts.js";
 import { P } from "../designs/palette.js";
 import { useTermSize } from "../use-term-size.js";
 import { LEVELS, POLL_OPTIONS, cycle, FieldRow, type LogLevel } from "../parts-extra.js";
-import { StorageScreen } from "./Storage.js";
+import { BackendScreen } from "./Backend.js";
 
 /**
  * Tabbed configuration reached with `c` from the live view. Tab cycles tabs
@@ -46,7 +45,7 @@ export function ConfigScreen({
   const { cols, rows } = useTermSize();
 
   const [tab, setTab] = useState(0);
-  const [storageOpen, setStorageOpen] = useState(false);
+  const [backendOpen, setBackendOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = TABS[tab]!;
@@ -61,25 +60,17 @@ export function ConfigScreen({
   };
   useEffect(() => () => void (flashTimer.current && clearTimeout(flashTimer.current)), []);
 
-  if (storageOpen)
+  if (backendOpen)
     return (
-      <StorageScreen
+      <BackendScreen
         config={config}
-        onSave={(driver, url, token) => {
-          void (async () => {
-            const next: Config = { ...config, storage: { driver, url, token } };
-            const res = await applySetup(next);
-            if (res.ok) {
-              const restarted = restartIfRunning(res.config);
-              onChange(res.config);
-              notify(restarted ? "✓ storage updated · restarting daemon" : "✓ storage updated");
-            } else {
-              notify(`✗ ${res.error}`);
-            }
-            setStorageOpen(false);
-          })();
+        onApplied={(cfg, note) => {
+          const restarted = restartIfRunning(cfg);
+          onChange(cfg);
+          notify(restarted ? `${note} · restarting daemon` : note);
+          setBackendOpen(false);
         }}
-        onCancel={() => setStorageOpen(false)}
+        onCancel={() => setBackendOpen(false)}
       />
     );
 
@@ -129,7 +120,7 @@ export function ConfigScreen({
             isActive={!!isRawModeSupported}
             onBack={onBack}
             onCycleTab={cycleTab}
-            onOpenStorage={() => setStorageOpen(true)}
+            onOpenBackend={() => setBackendOpen(true)}
           />
         ) : (
           <DaemonTab
@@ -166,7 +157,7 @@ function GeneralTab({
   isActive,
   onBack,
   onCycleTab,
-  onOpenStorage,
+  onOpenBackend,
 }: {
   config: Config;
   onChange: (cfg: Config) => void;
@@ -174,7 +165,7 @@ function GeneralTab({
   isActive: boolean;
   onBack: () => void;
   onCycleTab: (dir: 1 | -1) => void;
-  onOpenStorage: () => void;
+  onOpenBackend: () => void;
 }): React.ReactElement {
   const [row, setRow] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -231,7 +222,7 @@ function GeneralTab({
         if (row === 0) {
           setBuf(config.name);
           setEditing(true);
-        } else if (row === 1) onOpenStorage();
+        } else if (row === 1) onOpenBackend();
       }
     },
     { isActive }
@@ -242,10 +233,15 @@ function GeneralTab({
       <FieldRow label="your name" focused={row === 0} editing={editing && row === 0}>
         {editing && row === 0 ? buf : config.name}
       </FieldRow>
-      <FieldRow label="storage" focused={row === 1}>
+      <FieldRow label="backend" focused={row === 1}>
         <Text>
-          <Text color={P.cream}>{config.storage.driver}</Text>
-          <Text color={P.dim}> · {config.storage.url}</Text>
+          <Text color={P.cream}>
+            {config.mode === "shared" ? "shared hosting" : (config.storage?.driver ?? "self-host")}
+          </Text>
+          <Text color={P.dim}>
+            {" · "}
+            {config.mode === "shared" ? (config.server?.url ?? "") : (config.storage?.url ?? "")}
+          </Text>
           {row === 1 ? <Text color={P.faint}>{"   ⏎ change"}</Text> : null}
         </Text>
       </FieldRow>

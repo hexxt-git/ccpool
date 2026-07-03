@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MemoryStorage, type LocalState } from "@ccshare/core";
+import {
+  MemoryStorage,
+  StorageIngestSink,
+  type IngestMeta,
+  type IngestSink,
+  type LocalState,
+  type TickBatch,
+} from "@ccshare/core";
 import { Daemon, type DaemonDeps } from "../src/daemon.js";
 import { acquireLock, AlreadyRunningError, daemonPaths } from "../src/lifecycle.js";
 
@@ -11,10 +18,13 @@ const NOW = Date.parse("2026-06-29T20:00:00.000Z");
 interface Harness {
   deps: DaemonDeps;
   storage: MemoryStorage;
+  sink: StorageIngestSink;
   stateFile: string;
   configDir: string;
   /** Swap the next poll's response body. */
   setBody(body: unknown): void;
+  /** Advance the mock clock (ticks are seconds apart in reality). */
+  advance(ms: number): void;
   fetchCalls(): number;
 }
 
@@ -37,24 +47,35 @@ function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Harness {
   let body = initialBody;
   const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
 
+  // A mutable clock shared by the daemon and its sink — successive ticks read a
+  // later time, exactly as they would in production (samples are keyed on
+  // `(cap, capturedAt)`, so same-instant ticks would otherwise dedup).
+  let clock = NOW;
+  const now = () => clock;
+
   const storage = new MemoryStorage();
+  const sink = new StorageIngestSink(storage, { now });
   const paths = daemonPaths(ccshareDir, configDir);
 
   return {
     storage,
+    sink,
     stateFile: paths.stateFile,
     configDir,
     setBody: (b) => {
       body = b;
     },
+    advance: (ms) => {
+      clock += ms;
+    },
     fetchCalls: () => fetchMock.mock.calls.length,
     deps: {
-      storage,
+      sink,
       paths,
       configDir,
       name: "sam",
       pollIntervalMs: 60_000,
-      now: () => NOW,
+      now,
       fetchImpl: fetchMock as unknown as typeof fetch,
       logger: { debug() {}, info() {}, warn() {}, error() {} },
     },
@@ -67,6 +88,11 @@ afterEach(() => {
   delete process.env.CLAUDE_CONFIG_DIR;
   vi.restoreAllMocks();
 });
+
+/** Reach the private startup step (sink bootstrap: binding + reset seed). */
+async function bootstrap(daemon: Daemon): Promise<void> {
+  await (daemon as unknown as { bootstrap(): Promise<void> }).bootstrap();
+}
 
 describe("Daemon.tick", () => {
   it("polls, records samples, and writes state.json atomically", async () => {
@@ -84,14 +110,12 @@ describe("Daemon.tick", () => {
 
   it("records a reset when pct drops across ticks", async () => {
     const h = setup({ five_hour: { utilization: 90, resets_at: null } });
-    const spy = vi.spyOn(h.storage, "recordReset");
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // 90%
     h.setBody({ five_hour: { utilization: 3, resets_at: null } });
     await daemon.tick(); // 3% -> reset
-    expect(spy).toHaveBeenCalledWith(
-      expect.objectContaining({ cap: "five_hour", previousPct: 90 })
-    );
+    const resets = await h.storage.getResetsSince(new Date(0).toISOString());
+    expect(resets).toEqual([expect.objectContaining({ cap: "five_hour", previousPct: 90 })]);
   });
 
   it("skips the poll and flags expiry when the token is expired", async () => {
@@ -100,17 +124,41 @@ describe("Daemon.tick", () => {
     expect(h.fetchCalls()).toBe(0);
     expect(readState(h.stateFile).account.tokenExpired).toBe(true);
   });
+
+  it("sends ONE batch per tick (samples + messages together)", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const spy = vi.spyOn(h.storage, "recordBatch");
+    await new Daemon(h.deps).tick();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed batch and merges it into the next tick (no dropped rows)", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    let failNext = true;
+    const flaky: IngestSink = {
+      bootstrap: () => h.sink.bootstrap(),
+      ingest: async (batch: TickBatch, meta: IngestMeta) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("sink offline");
+        }
+        await h.sink.ingest(batch, meta);
+      },
+      close: () => h.sink.close(),
+    };
+    const daemon = new Daemon({ ...h.deps, sink: flaky });
+
+    const { pollFailed } = await daemon.tick(); // ingest fails -> batch retained
+    expect(pollFailed).toBe(true);
+    expect(await h.storage.getLatestSamples()).toHaveLength(0);
+
+    h.setBody({ five_hour: { utilization: 43, resets_at: null } });
+    h.advance(60_000); // next tick observes a later instant (distinct capturedAt)
+    await daemon.tick(); // retried batch merges with this tick's
+    const samples = await h.storage.getUsageSamplesSince(new Date(0).toISOString());
+    expect(samples.map((s) => s.pct)).toEqual([42, 43]); // both ticks landed
+  });
 });
-
-/** Reach the private startup step that reads the DB's bound account. */
-async function loadBinding(daemon: Daemon): Promise<void> {
-  await (daemon as unknown as { loadBoundAccount(): Promise<void> }).loadBoundAccount();
-}
-
-/** Reach the private startup step that heals the schema. */
-async function healSchema(daemon: Daemon): Promise<void> {
-  await (daemon as unknown as { ensureSchemaCurrent(): Promise<void> }).ensureSchemaCurrent();
-}
 
 describe("Daemon schema auto-migration", () => {
   // v1 is the single baseline, so a freshly initialized DB is already current and
@@ -120,7 +168,7 @@ describe("Daemon schema auto-migration", () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-1");
     const spy = vi.spyOn(h.storage, "migrate");
-    await healSchema(new Daemon(h.deps));
+    await bootstrap(new Daemon(h.deps));
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -130,7 +178,7 @@ describe("Daemon account-conflict guard", () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER"); // ledger bound to a different account
     const daemon = new Daemon(h.deps); // local account is acc-1 (from .claude.json)
-    await loadBinding(daemon);
+    await bootstrap(daemon);
     await daemon.tick();
 
     expect(h.fetchCalls()).toBe(1); // still polls (local view)
@@ -140,21 +188,33 @@ describe("Daemon account-conflict guard", () => {
     expect(state.samples.map((s) => s.cap)).toEqual(["five_hour"]); // local state still shown
   });
 
-  it("does not ingest measured messages during a conflict", async () => {
+  it("does not ingest anything during a conflict", async () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER");
-    const spy = vi.spyOn(h.storage, "recordMessageUsage");
+    const spy = vi.spyOn(h.storage, "recordBatch");
     const daemon = new Daemon(h.deps);
-    await loadBinding(daemon);
+    await bootstrap(daemon);
     await daemon.tick();
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("flags the conflict when the sink itself refuses the write (server-side 409)", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    await h.storage.initializeSchema("acc-OTHER");
+    const daemon = new Daemon(h.deps);
+    // The daemon never learns the binding — only the sink does (like a server 409).
+    await h.sink.bootstrap();
+    await daemon.tick();
+
+    expect(await h.storage.getLatestSamples()).toHaveLength(0);
+    expect(readState(h.stateFile).account.conflict).toBe(true);
   });
 
   it("writes normally when the local account matches the binding", async () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-1"); // matches .claude.json
     const daemon = new Daemon(h.deps);
-    await loadBinding(daemon);
+    await bootstrap(daemon);
     await daemon.tick();
 
     expect(await h.storage.getLatestSamples()).toHaveLength(1);
@@ -165,7 +225,7 @@ describe("Daemon account-conflict guard", () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema(); // unbound (accountId null)
     const daemon = new Daemon(h.deps);
-    await loadBinding(daemon);
+    await bootstrap(daemon);
     await daemon.tick();
 
     expect(await h.storage.getLatestSamples()).toHaveLength(1);

@@ -9,11 +9,25 @@ export const CAP_KINDS: readonly CapKind[] = ["five_hour", "seven_day", "seven_d
 /** The reserved name that absorbs unattributed activity. */
 export const UNKNOWN_USER = "unknown";
 
-/** Names are the only identity. Alphanumeric + hyphens so they're safe as keys. */
-export const NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+/**
+ * Names are the only identity. Alphanumeric + hyphens so they're safe as keys.
+ * The negated character class (not an anchored `$`) is deliberate: `/^[…]+$/`
+ * would also accept a trailing newline, since JS `$` matches before a final
+ * `\n` without the `m` flag — enough to sneak "unknown\n" or a look-alike name
+ * past validation. Testing for any disallowed char rejects newlines anywhere.
+ */
+export const NAME_DISALLOWED = /[^A-Za-z0-9-]/;
+
+/**
+ * Upper bound on a name's length. Names key the ledger and head the member
+ * columns, so an unbounded name would bloat rows and wreck the TUI layout — the
+ * server accepts whatever `isValidName` accepts, so the cap has to live here.
+ */
+export const MAX_NAME_LENGTH = 32;
 
 export function isValidName(name: string): boolean {
-  if (!NAME_PATTERN.test(name)) return false;
+  if (name.length === 0 || name.length > MAX_NAME_LENGTH) return false;
+  if (NAME_DISALLOWED.test(name)) return false;
   // `unknown` is the reserved row that absorbs unattributed usage — a real person
   // can't claim it, or their share would silently merge into the unknown bucket.
   // Case-insensitive: "Unknown" rendered next to "unknown" would be just as confusing.
@@ -86,6 +100,42 @@ export interface UserShare {
   pct: number;
 }
 
+/**
+ * Everything one daemon tick observed, persisted atomically as a single write.
+ * `messages`/`markers` stay idempotent on uuid/id, so re-sending a batch (e.g. a
+ * retry after a failed ingest) can never double-count.
+ */
+export interface TickBatch {
+  samples: UsageSample[]; // 0..3 (empty when the poll was skipped or failed)
+  resets: ResetEvent[];
+  messages: MessageUsage[];
+  markers: UsageMarker[];
+}
+
+// ── the shared view ───────────────────────────────────────────────────────────
+
+/** Per-name rollup of measured Code activity: total tokens and last seen. */
+export interface MemberSummary {
+  user: string;
+  /** input + output + cache (creation + read) across the window. */
+  tokens: number;
+  /** ISO 8601 of the most recent message, or null if none parsed. */
+  lastActivityAt: string | null;
+}
+
+/**
+ * The compact, precomputed shared picture — everything `status`/`tui` need from
+ * the ledger, and the only thing that crosses the network in shared mode (a few
+ * KB, never raw rows). Assembled by `computeSharedView`, cached by change token.
+ */
+export interface SharedView {
+  generatedAt: string; // ISO 8601, when this view was computed
+  samples: UsageSample[]; // latest per cap
+  shares: UserShare[]; // per-person split of each cap window
+  members: MemberSummary[]; // per-name measured activity (tokens, last seen)
+  users: User[]; // the roster, so `ccshare users` works in both modes
+}
+
 // ── storage inspection ────────────────────────────────────────────────────────
 
 /** Result of inspecting a target database before init. */
@@ -114,8 +164,19 @@ export interface StorageConfig {
   token?: string;
 }
 
+/**
+ * How this machine reaches the shared ledger:
+ * - `shared`   — through the hosted HTTP server (two-password auth, bearer token).
+ * - `selfhost` — directly against a storage adapter URL the group runs itself.
+ */
+export type Mode = "shared" | "selfhost";
+
 export interface Config {
-  storage: StorageConfig;
+  mode: Mode;
+  /** selfhost only: the adapter this machine talks to directly. */
+  storage?: StorageConfig;
+  /** shared only: the ccshare server. The bearer token lives in the 0600 token file. */
+  server?: { url: string; token?: string };
   /** Active user; alphanumeric + hyphens. Changeable with `config set name`. */
   name: string;
   pollIntervalMs: number;

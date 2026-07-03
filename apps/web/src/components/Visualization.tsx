@@ -379,6 +379,7 @@ function ClawdUser({
 
 export default function Visualization() {
   const [revealed, setRevealed] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const [connectedMap, setConnectedMap] = useState<Record<number, boolean>>(() =>
     Object.fromEntries(users.map((u) => [u.id, true]))
   );
@@ -510,6 +511,7 @@ export default function Visualization() {
   }, []);
 
   const handleDisconnect = useCallback((id: number) => {
+    setHasInteracted(true);
     setConnectedMap((prev) => ({ ...prev, [id]: false }));
     setDisconnectedQueue((prev) => [...prev, id]);
   }, []);
@@ -617,6 +619,22 @@ export default function Visualization() {
               className="block w-full select-none opacity-90 [image-rendering:pixelated]"
             />
           </motion.div>
+          <motion.div
+            className="font-vt text-retro-fg absolute left-1/2 text-center"
+            style={{
+              top: "85%",
+              transform: "translateX(-50%)",
+              fontSize: `${19 * scale}px`,
+              whiteSpace: "nowrap",
+              marginTop: `${6 * scale}px`,
+            }}
+            initial={{ opacity: 0 }}
+            animate={hasInteracted ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {activeCount} users connected
+          </motion.div>
+
           {(() => {
             const targetOpacity = activeCount === 0 ? 0 : 1;
 

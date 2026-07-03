@@ -1,5 +1,5 @@
 import { CAP_KINDS, countdown, UNKNOWN_USER, type CapKind } from "@ccshare/core";
-import type { ViewModel, ViewSource } from "./view.js";
+import type { ViewModel, ViewOrigin } from "./view.js";
 import { formatAge } from "./render.js";
 
 /**
@@ -40,7 +40,7 @@ export interface DesignMember {
 export interface DesignModel {
   me: string;
   account: string; // email/id, or "—"
-  source: ViewSource;
+  source: ViewOrigin;
   sourceLabel: string; // "shared db" | "local state" | "live poll" | "no data"
   sync: string; // "12s ago" | "never"
   daemonRunning: boolean;
@@ -59,7 +59,7 @@ export const DISCONNECTED_USER = "xxxx";
 /** How many placeholder rows to split the cached tank across. */
 const DISCONNECTED_ROWS = 4;
 
-const SOURCE_LABEL: Record<ViewSource, string> = {
+const SOURCE_LABEL: Record<ViewOrigin, string> = {
   db: "shared db",
   state: "local state",
   live: "live poll",

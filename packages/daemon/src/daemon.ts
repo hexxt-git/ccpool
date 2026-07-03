@@ -1,17 +1,21 @@
 import {
+  AccountConflictError,
+  ApiRequestError,
   atomicWriteJson,
   buildLocalState,
   detectResets,
+  emptyBatch,
+  isEmptyBatch,
   isTokenExpired,
   JsonlReader,
   pollUsage,
   projectsDir,
   readCredentials,
   resolveAccount,
-  SCHEMA_VERSION,
   UsageAuthError,
+  type IngestSink,
   type MessageUsage,
-  type Storage,
+  type TickBatch,
   type UsageMarker,
   type UsageSample,
 } from "@ccshare/core";
@@ -26,7 +30,8 @@ import {
 } from "./lifecycle.js";
 
 export interface DaemonDeps {
-  storage: Storage;
+  /** Where observations go: a storage adapter (self-host) or the server (shared). */
+  sink: IngestSink;
   paths: DaemonPaths;
   /** The Claude config dir this daemon observes. */
   configDir: string;
@@ -58,6 +63,20 @@ const MARKER_ACTIVITY_WINDOW_MS = 3 * 60_000;
 /** Sub-point wobble that isn't a real rise (matches reset detection's epsilon). */
 const MARKER_RISE_EPSILON = 0.5;
 
+/**
+ * A failed tick's batch is kept and merged into the next one (every row is
+ * inserted idempotently — samples/resets on their natural key, messages/markers
+ * on uuid/id — so the re-send can't double-count), but bounded so an extended
+ * sink outage can't grow memory without limit. Newest rows win — they're the
+ * ones attribution still needs.
+ */
+const PENDING_CAP = { samples: 5_000, resets: 100, messages: 5_000, markers: 500 };
+
+/** A shared-mode ingest rejected for bad/revoked credentials (not transient). */
+function isAuthError(err: unknown): err is ApiRequestError {
+  return err instanceof ApiRequestError && (err.status === 401 || err.code === "auth");
+}
+
 /** The same reliable, comparable weight attribution uses (cache + output). */
 function messageWeight(m: MessageUsage): number {
   return Math.max(0, m.cacheCreationTokens + m.cacheReadTokens + m.outputTokens);
@@ -72,11 +91,21 @@ function anyCapRose(prev: UsageSample[], next: UsageSample[]): boolean {
   });
 }
 
+/** Fold `pending` into `next` (older rows first), clamped to {@link PENDING_CAP}. */
+function mergeBatches(pending: TickBatch, next: TickBatch): TickBatch {
+  return {
+    samples: [...pending.samples, ...next.samples].slice(-PENDING_CAP.samples),
+    resets: [...pending.resets, ...next.resets].slice(-PENDING_CAP.resets),
+    messages: [...pending.messages, ...next.messages].slice(-PENDING_CAP.messages),
+    markers: [...pending.markers, ...next.markers].slice(-PENDING_CAP.markers),
+  };
+}
+
 /**
  * The long-running observer (no IPC). Each tick reads the token, polls the tank,
- * records samples + resets to the shared DB, and writes the local `state.json`.
- * Old transcript history is never backfilled — JSONL ingest (Phase 5) baselines
- * at EOF on start.
+ * ingests new transcript lines, sends everything to the sink as ONE batch, and
+ * writes the local `state.json`. Old transcript history is never backfilled —
+ * JSONL ingest baselines at EOF on start.
  */
 export class Daemon {
   private prev: UsageSample[] = [];
@@ -86,10 +115,12 @@ export class Daemon {
   private failures = 0;
   private readonly log: Logger;
   private readonly reader: JsonlReader;
-  /** The Claude account the shared DB is bound to (§1.5); null = unbound. */
+  /** The Claude account the ledger is bound to (§1.5); null = unbound. */
   private boundAccount: string | null = null;
   /** False until we've read the binding — while false we never enforce. */
   private boundAccountKnown = false;
+  /** A batch a previous tick failed to send; merged into the next tick's. */
+  private pending: TickBatch | null = null;
   // Most-recent local Code activity, for deciding when an unexplained tank rise is
   // this machine's untracked overhead (activity marker, §7). Reset on restart —
   // the reader re-baselines at EOF, so we never mark against stale history.
@@ -138,43 +169,6 @@ export class Daemon {
   }
 
   /**
-   * Heal the shared DB's schema to the version this build understands, so a CLI
-   * update never leaves the user running a manual `init --reconfigure`. Migrations
-   * are additive (nullable columns), so this is forward-safe and multi-machine
-   * safe: an older daemon keeps writing the columns it knows. If the DB is *newer*
-   * than this build we log and continue rather than take the observer offline.
-   */
-  private async ensureSchemaCurrent(): Promise<void> {
-    try {
-      const info = await this.deps.storage.inspect();
-      if (info.kind !== "ccshare") return;
-      if (info.schemaVersion < SCHEMA_VERSION) {
-        this.log.info(`migrating shared DB schema v${info.schemaVersion} → v${SCHEMA_VERSION}`);
-        await this.deps.storage.migrate(SCHEMA_VERSION);
-      } else if (info.schemaVersion > SCHEMA_VERSION) {
-        this.log.warn(
-          `shared DB schema is v${info.schemaVersion}, newer than this build (v${SCHEMA_VERSION}); ` +
-            `continuing on known columns — consider updating ccshare`
-        );
-      }
-    } catch {
-      /* DB unreachable at startup — ticks will retry, and init already migrated */
-    }
-  }
-
-  /** Read the account the shared DB is bound to, once. DB unreachable → stay
-   * "unknown" so we fail open (writes would fail anyway) rather than block. */
-  private async loadBoundAccount(): Promise<void> {
-    try {
-      const info = await this.deps.storage.inspect();
-      this.boundAccount = info.kind === "ccshare" ? info.accountId : null;
-      this.boundAccountKnown = true;
-    } catch {
-      this.boundAccountKnown = false;
-    }
-  }
-
-  /**
    * True when this machine's Claude account differs from the account the ledger is
    * bound to. Only a *hydrated* (onboarded) account has a real accountUuid to
    * compare — an unbound ledger or an unhydrated local account never conflicts.
@@ -188,10 +182,11 @@ export class Daemon {
   /**
    * One observation cycle. Poll, JSONL ingest, and the state.json write are
    * independent: a poll failure never blocks attribution, and state is always
-   * refreshed. Returns whether the poll failed so {@link run} can back off.
+   * refreshed. Everything observed lands in the sink as ONE batch. Returns
+   * whether the poll or the ingest failed so {@link run} can back off.
    */
   async tick(): Promise<{ pollFailed: boolean }> {
-    const { storage, configDir, paths } = this.deps;
+    const { configDir, paths } = this.deps;
     const nowIso = new Date(this.nowMs()).toISOString();
 
     const account = await resolveAccount(configDir);
@@ -200,12 +195,12 @@ export class Daemon {
     // Guard: never write into a ledger bound to a *different* Claude account —
     // interleaving two tanks in one `usage_samples` table corrupts attribution and
     // reset detection (§1.5). We still poll so the local user sees their own tank in
-    // state.json, but skip every shared-DB write while the conflict holds.
-    const accountConflict = this.isAccountConflict(account);
+    // state.json, but skip the ledger write while the conflict holds.
+    let accountConflict = this.isAccountConflict(account);
     if (accountConflict) {
       this.log.warn(
         `account mismatch: this machine's Claude account (${account?.id}) differs from ` +
-          `the shared DB's (${this.boundAccount}); NOT writing to the ledger`
+          `the ledger's (${this.boundAccount}); NOT writing to the ledger`
       );
     }
 
@@ -213,6 +208,7 @@ export class Daemon {
     let pollFailed = false;
     const prevSamples = this.prev;
     let samples = this.prev;
+    const batch = emptyBatch();
 
     if (!creds || isTokenExpired(creds, this.nowMs())) {
       // Skip the poll; Claude Code refreshes on its next run (§8). Not an error.
@@ -225,14 +221,12 @@ export class Daemon {
           version: this.deps.version,
           capturedAt: nowIso,
         });
-        if (!accountConflict) {
-          const resets = detectResets(this.prev, fresh, nowIso);
-          for (const e of resets) {
-            this.log.info(`reset detected on ${e.cap} (was ${e.previousPct}%)`);
-            await storage.recordReset(e);
-          }
-          for (const s of fresh) await storage.recordUsageSample(s);
+        const resets = detectResets(this.prev, fresh, nowIso);
+        for (const e of resets) {
+          this.log.info(`reset detected on ${e.cap} (was ${e.previousPct}%)`);
         }
+        batch.resets.push(...resets);
+        batch.samples.push(...fresh);
         samples = fresh;
         this.prev = fresh;
       } catch (err) {
@@ -253,22 +247,16 @@ export class Daemon {
     try {
       const name = await this.currentName();
       const rows = await this.reader.collectNew(name);
-      // Advance the reader's offsets even on conflict (rows are consumed), but don't
-      // record them — they'd land in the wrong account's ledger.
-      if (rows.length > 0 && !accountConflict) {
-        await storage.recordMessageUsage(rows);
-        this.log.debug(`ingested ${rows.length} message(s)`);
-      }
+      batch.messages.push(...rows);
+      if (rows.length > 0) this.log.debug(`collected ${rows.length} new message(s)`);
 
       // Activity marker: the tank rose this tick but no measured message covers it,
       // yet this machine's user was driving Code moments ago. That gap is real
       // local work the transcript doesn't reflect in time (an endpoint-lagged tail,
       // or a resume/compaction re-prime). Credit the rise to that user rather than
-      // `unknown` (§7). We decide *before* folding in this tick's activity, and skip
-      // when a message already covers the interval or on an account conflict.
+      // `unknown` (§7). We decide *before* folding in this tick's activity.
       if (
         rows.length === 0 &&
-        !accountConflict &&
         anyCapRose(prevSamples, samples) &&
         this.lastLocalActivityMs !== null &&
         this.nowMs() - this.lastLocalActivityMs <= MARKER_ACTIVITY_WINDOW_MS
@@ -280,13 +268,59 @@ export class Daemon {
           model: this.lastLocalModel,
           weight: this.lastLocalWeight,
         };
-        await storage.recordUsageMarker(marker);
+        batch.markers.push(marker);
         this.log.debug(`activity marker for ${marker.user}: tank rose with no in-interval message`);
       }
 
       this.rememberActivity(rows);
     } catch (err) {
       this.log.warn(`jsonl ingest failed: ${(err as Error).message}`);
+    }
+
+    // ONE ledger write per tick. A previously failed batch is merged in first so
+    // a transient outage never drops transcript rows (every row inserts
+    // idempotently, so the re-send can't double-count). On an account conflict
+    // everything observed this tick is consumed but deliberately dropped — it
+    // belongs to a different tank.
+    if (accountConflict) {
+      this.pending = null;
+    } else {
+      const toSend = this.pending ? mergeBatches(this.pending, batch) : batch;
+      if (!isEmptyBatch(toSend)) {
+        try {
+          await this.deps.sink.ingest(toSend, {
+            at: nowIso,
+            accountId: account?.hydrated ? account.id : null,
+          });
+          this.pending = null;
+        } catch (err) {
+          if (err instanceof AccountConflictError) {
+            // The sink knows the binding better than we do (shared mode: the
+            // server's 409). Adopt it, flag the conflict, drop the batch.
+            accountConflict = true;
+            this.boundAccount = err.boundAccountId;
+            this.boundAccountKnown = err.boundAccountId != null;
+            this.pending = null;
+            this.log.warn(`ledger refused the write: ${err.message}`);
+          } else if (isAuthError(err)) {
+            // Shared-mode: the bearer was rejected (revoked, or rotated by a
+            // hand-off on another machine). This daemon's token is fixed at
+            // startup, so retrying can't fix it — re-auth (`ccshare init`)
+            // restarts the daemon with a fresh token. Drop the doomed batch and
+            // surface an actionable error instead of silently spinning forever.
+            this.pending = null;
+            pollFailed = true; // back off hard rather than hammering every tick
+            this.log.error(
+              `shared-mode auth rejected (${err.message}) — your access token was revoked ` +
+                "or rotated; re-run `ccshare init` to re-authenticate"
+            );
+          } else {
+            this.pending = toSend;
+            pollFailed = true; // count it for backoff like a poll failure
+            this.log.warn(`ingest failed (will retry next tick): ${(err as Error).message}`);
+          }
+        }
+      }
     }
 
     await atomicWriteJson(
@@ -305,25 +339,34 @@ export class Daemon {
     return { pollFailed };
   }
 
+  /**
+   * Startup: heal the schema (self-host), learn the binding (§1.5), and seed
+   * the previous reading so a reset that happened while this daemon was down is
+   * caught (and recorded) on the very first poll — not silently missed because
+   * `prev` started empty. Skip the seed on an account conflict: those samples
+   * belong to a *different* account and would poison detection. Never throws —
+   * an unreachable backend means ticks retry, and we never enforce a binding we
+   * haven't read (fail open, like writes would fail).
+   */
+  private async bootstrap(): Promise<void> {
+    try {
+      const boot = await this.deps.sink.bootstrap();
+      this.boundAccount = boot.accountId;
+      this.boundAccountKnown = true;
+      const startupAccount = await resolveAccount(this.deps.configDir).catch(() => null);
+      if (this.prev.length === 0 && !this.isAccountConflict(startupAccount)) {
+        this.prev = boot.samples;
+      }
+    } catch (err) {
+      this.boundAccountKnown = false;
+      this.log.warn(`bootstrap failed (continuing): ${(err as Error).message}`);
+    }
+  }
+
   /** Run until {@link stop}. Backs off exponentially on poll failures. */
   async run(): Promise<void> {
     this.log.info(`daemon up (pid ${process.pid}, name ${this.deps.name})`);
-    // Auto-heal the schema first (adds any new columns), then read the binding.
-    await this.ensureSchemaCurrent();
-    // Read which account the ledger is bound to before touching it (§1.5).
-    await this.loadBoundAccount();
-    // Seed the previous reading from the shared DB so a reset that happened while
-    // this daemon was down is caught (and recorded) on the very first poll — not
-    // silently missed because `prev` started empty. Skip it on an account conflict:
-    // those samples belong to a *different* account and would poison detection.
-    const startupAccount = await resolveAccount(this.deps.configDir).catch(() => null);
-    if (this.prev.length === 0 && !this.isAccountConflict(startupAccount)) {
-      try {
-        this.prev = await this.deps.storage.getLatestSamples();
-      } catch {
-        /* DB unreachable at startup — fall back to detecting from the first poll on */
-      }
-    }
+    await this.bootstrap();
     while (!this.stopped) {
       let delay = this.deps.pollIntervalMs;
       try {
@@ -373,7 +416,7 @@ function jitter(ms: number): number {
 
 /**
  * Acquire the single-instance lock, install signal handlers, run the loop, and
- * always release the lock + close storage on the way out. This is what the
+ * always release the lock + close the sink on the way out. This is what the
  * `ccshare daemon run` process calls.
  */
 export async function startDaemon(deps: DaemonDeps): Promise<void> {
@@ -390,7 +433,7 @@ export async function startDaemon(deps: DaemonDeps): Promise<void> {
   try {
     await daemon.run();
   } finally {
-    await deps.storage.close().catch(() => {});
+    await deps.sink.close().catch(() => {});
     releaseLock(deps.paths.pidFile);
   }
 }

@@ -28,7 +28,8 @@ who's driving it, so they can split it fairly and self-regulate.
 It is a **read-only observer plus a shared ledger**. It never sits in the request
 path, never proxies, never blocks requests, and never touches auth beyond reading
 the token Claude Code already stored. Each participant runs ccshare on their own
-machine, everyone points at **one shared database**, and the tool shows:
+machine, everyone joins **one shared ledger** — hosted for you (just two
+passwords) or a database you run yourself — and the tool shows:
 
 - **how full each shared window is right now** (5-hour, weekly, weekly-Opus) with
   live reset countdowns — the account-wide truth from Anthropic's endpoint;
@@ -48,14 +49,20 @@ machine, everyone points at **one shared database**, and the tool shows:
 - **Per-person split** is built locally: a background daemon tails the Claude Code
   transcripts on each machine and credits new activity to the active name, writing
   it to the shared DB. Summed across everyone, that's the breakdown.
-- **No IPC.** The daemon writes an atomic local `state.json` and the shared
-  database; the TUI and statusline just read those. Nothing talks to another
-  process directly.
+- **No IPC.** The daemon writes an atomic local `state.json` and one batched
+  ledger write per tick; the TUI and statusline just read. Nothing talks to
+  another process directly.
+- **Cheap to watch.** The live view refreshes every 2 seconds, but the heavy work
+  only reruns when the ledger actually changed (a change-token / ETag check) — a
+  steady-state refresh costs one single-row read or a bodyless HTTP 304.
 - **Only new activity counts.** On startup the daemon baselines each transcript at
   its current end-of-file and ingests only lines appended after — old history is
   never backfilled.
-- **Runs on Node (≥20) and Bun.** Storage is swappable: libSQL/Turso by default,
-  Postgres also supported.
+- **Two ways to share.** _Shared hosting_ (default): everyone authenticates to the
+  ccshare server with a group password plus a personal member password — nobody
+  manages a database, and nobody can write usage as somebody else. _Self-host_:
+  point everyone at your own libSQL/Turso or Postgres database.
+- **Runs on Node (≥20) and Bun.**
 
 ---
 
@@ -67,11 +74,12 @@ machine, everyone points at **one shared database**, and the tool shows:
   [pnpm](https://pnpm.io)
 - Claude Code installed and signed in on each machine (ccshare reads the token it
   already stored — it never logs you in)
-- **One shared database** for the group. Either works:
-  - a local file (great for a single machine or a shared/synced path):
-    `file:./ccshare.db`
-  - a free hosted [Turso](https://turso.tech) / libSQL database: `libsql://…`
-    (plus an auth token), or a Postgres URL
+- A place for the shared ledger. Pick one at init:
+  - **shared hosting** (default, zero setup): the ccshare server hosts your
+    group's ledger; you only choose two passwords
+  - **self-host**: your own database — a local file (`file:./ccshare.db`), a free
+    hosted [Turso](https://turso.tech) / libSQL database (`libsql://…` plus an
+    auth token), or a Postgres URL
 
 ### 2. Build the CLI
 
@@ -91,26 +99,45 @@ The examples below use `ccshare` for brevity.
 
 ### 3. Initialise (required first run)
 
-Everyone in the group points at the **same** database URL — that URL is the join
-key. The first person sets up the schema; everyone after joins it. Just run:
-
 ```bash
 ccshare        # unconfigured → a guided onboarding wizard; configured → the live view
 ```
 
 Bare `ccshare` opens a TUI. On a fresh machine it walks you through onboarding one
-step at a time — pick storage, enter the database URL (+ token if remote), it tests
-the connection and inspects the database, then you choose a **name** (letters,
-digits, hyphens) and it starts the daemon. On an empty database it asks before
-creating tables; if the database already contains another project it refuses rather
-than mixing in — ccshare needs its own clean, dedicated database. Once configured,
-`ccshare` opens straight to the live view (press **c** there to reconfigure).
+step at a time: choose a **name** (letters, digits, hyphens), then how the group's
+data is hosted.
 
-The same flow is scriptable through the `ccshare init` flag command — every prompt
-has a flag, so it runs non-interactively:
+**Shared hosting** (the default) asks for two passwords and nothing else:
+
+- the **group password** — everyone in the group uses the same one; knowing it is
+  what lets a machine join the group at all;
+- your **member password** — yours alone; it protects your name, so nobody else
+  can join or report usage as you.
+
+The group itself is tied to the Claude account you're signed into (resolved
+automatically — never typed). The first person to init creates the group (after a
+confirmation); everyone after joins it with the group password.
+
+**Self-host** keeps the classic flow: everyone points at the **same** database
+URL — that URL is the join key. The wizard tests the connection and inspects the
+database; on an empty database it asks before creating tables, and if the database
+already contains another project it refuses rather than mixing in — ccshare needs
+its own clean, dedicated database.
+
+Once configured, `ccshare` opens straight to the live view (press **c** there to
+reconfigure). The config screen's **backend** row switches between shared hosting
+and self-host either way — pick a mode, then enter the two passwords (shared) or a
+database URL (self-host); ccshare restarts the daemon onto the new backend. The
+same flow is scriptable through the `ccshare init` flag command — every prompt has
+a flag, so it runs non-interactively:
 
 ```bash
-ccshare init --driver libsql --url "file:./ccshare.db" --name sam --yes
+# shared hosting (prefer the env vars in CI — flags leak into shell history)
+CCSHARE_GROUP_PASSWORD=… CCSHARE_MEMBER_PASSWORD=… \
+  ccshare init --mode shared --name sam --yes
+
+# self-host
+ccshare init --mode selfhost --driver libsql --url "file:./ccshare.db" --name sam --yes
 ```
 
 Check what ccshare sees at any time (changes nothing):
@@ -134,7 +161,7 @@ From now on your live usage flows into the shared DB under your current name.
 
 ```bash
 ccshare            # opens the TUI: onboarding if unconfigured, else the live view
-                   #   press c to configure (name, storage, daemon)
+                   #   press c to configure (name, backend, daemon)
 ccshare tui        # jump straight to the live shared view (alias: ccshare live)
                    #   Tab switch view (⇧Tab reverses) · ↑↓ scroll · r refresh · q quit
 ccshare status     # one-shot snapshot to stdout
@@ -187,35 +214,57 @@ ccshare statusline
 ## 🧑‍🤝‍🧑 Sharing & day-to-day
 
 ```bash
-ccshare users                       # list participants in the shared DB
+ccshare users                       # list participants in the shared ledger
 ccshare config set name alex        # hand off the machine to another person
 ccshare config get                  # show current config
 ```
 
-Names are just labels, not machines — several people can share a machine and hand
-off by changing the name. Whoever's name is set when activity is ingested gets
-credited; the running daemon picks up the change without a restart.
+Names are just labels, not machines (letters, digits, and hyphens, up to 32
+chars) — several people can share a machine and hand off by changing the name.
+Whoever's name is set when activity is ingested gets credited. In self-host the
+running daemon picks up the new name on its next tick; in shared hosting a hand-off
+asks for the target member's password (names are protected) and mints a fresh
+token, so ccshare restarts the daemon for you to pick it up. Adding a brand-new
+member goes through `ccshare init`.
 
 ccshare deliberately has **no budgets or quotas** — it reports the reality of who
 used what and leaves it to the group to coordinate how much anyone should use.
 
 ---
 
+## 🖥️ Running your own server (optional)
+
+The shared-hosting server is open too. It's multi-tenant (many groups on one
+server, each group's ledger isolated in its own Postgres schema) and needs only a
+Postgres URL:
+
+```bash
+DATABASE_URL=postgres://user:pass@host/db PORT=8787 node apps/server/dist/index.js
+```
+
+Point CLIs at it with `CCSHARE_SERVER_URL=https://your-host` when running
+`ccshare init`. Run it behind TLS — the CLI refuses plain `http://` for anything
+but localhost, because the bearer token rides on every request. Passwords are
+stored as salted scrypt hashes and tokens as sha256 hashes; the server never keeps
+a usable credential.
+
 ## 🗂️ Project layout
 
 ```
 packages/
-  core/               # runtime-agnostic domain logic + Storage interface
-  storage-libsql/     # default adapter (file: and libsql://)
-  storage-postgres/   # second adapter, proves swappability
+  core/               # runtime-agnostic domain logic: Storage + IngestSink/ViewSource
+  storage-libsql/     # self-host adapter (file: and libsql://)
+  storage-postgres/   # adapter for self-hosters and the server (schema per group)
   daemon/             # the background observer (poll + jsonl + state.json)
 apps/
   cli/                # Commander + Ink CLI
+  server/             # multi-tenant shared-hosting server (Hono + Postgres)
   web/                # marketing site (Astro)
 ```
 
 Config lives in `~/.ccshare/` (`config.json`, the per-account `state.json`, logs,
-and a `0600` token file). Override the location with `CCSHARE_DIR`.
+and a `0600` token file holding the DB token or the server bearer). Override the
+location with `CCSHARE_DIR`.
 
 ## 🧪 Development
 
@@ -229,6 +278,19 @@ pnpm test:bun     # run the same suite on Bun
 
 The full suite runs on both Node and Bun in CI, and the storage contract suite
 runs against the memory, libSQL, and Postgres adapters.
+
+The Postgres-gated suites (the storage-postgres contract and the server
+integration tests) only run when `CCSHARE_TEST_PG_URL` is set. The `Makefile`
+spins a throwaway Docker Postgres for them on port 5433 (isolated from any local
+Postgres on 5432):
+
+```bash
+make db-up        # start the dev Postgres (waits until ready)
+make test-pg      # db-up, then run the PG-gated suites against it
+make db-reset     # wipe it clean
+make db-down      # stop and remove it
+make db-psql      # psql shell · make db-url prints the connection URL
+```
 
 ---
 

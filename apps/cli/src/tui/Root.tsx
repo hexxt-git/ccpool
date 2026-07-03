@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useApp } from "ink";
 import type { Config } from "@ccshare/core";
-import { makeStorage } from "../lib/storage.js";
+import { makeViewSource } from "../lib/backend.js";
 import { App } from "./App.js";
 import { InitScreen } from "./screens/Init.js";
 import { ConfigScreen } from "./screens/Config.js";
@@ -19,13 +19,20 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   const [config, setConfig] = useState<Config | null>(initialConfig);
   const [screen, setScreen] = useState<Screen>(initialConfig ? "status" : "init");
 
-  // One long-lived Storage for the live view; recreated only when the storage
+  // One long-lived ViewSource for the live view; recreated only when the backend
   // target changes (a reconfigure), and closed on unmount / swap.
-  const storage = useMemo(
-    () => (config ? makeStorage(config) : null),
-    [config?.storage.driver, config?.storage.url, config?.storage.token]
+  const viewSource = useMemo(
+    () => (config ? makeViewSource(config) : null),
+    [
+      config?.mode,
+      config?.storage?.driver,
+      config?.storage?.url,
+      config?.storage?.token,
+      config?.server?.url,
+      config?.server?.token,
+    ]
   );
-  useEffect(() => () => void storage?.close(), [storage]);
+  useEffect(() => () => void viewSource?.close(), [viewSource]);
 
   if (!config || screen === "init")
     return (
@@ -47,5 +54,5 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
       />
     );
 
-  return <App cfg={config} storage={storage!} onConfigure={() => setScreen("config")} />;
+  return <App cfg={config} viewSource={viewSource!} onConfigure={() => setScreen("config")} />;
 }

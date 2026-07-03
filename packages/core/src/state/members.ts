@@ -1,16 +1,9 @@
-import type { MessageUsage } from "../types.js";
+import type { MemberSummary, MessageUsage } from "../types.js";
 
 /** A name is "active" if it produced a message within this window. */
 export const ACTIVE_WINDOW_MS = 10 * 60 * 1000;
 
-/** Per-name rollup of measured Code activity: total tokens and last seen. */
-export interface MemberSummary {
-  user: string;
-  /** input + output + cache (creation + read) across the window. */
-  tokens: number;
-  /** ISO 8601 of the most recent message, or null if none parsed. */
-  lastActivityAt: string | null;
-}
+export type { MemberSummary };
 
 /**
  * Aggregate raw messages into one row per name. Pure: tokens sum every component

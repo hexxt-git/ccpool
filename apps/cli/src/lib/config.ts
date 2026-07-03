@@ -12,7 +12,11 @@ export function configPath(env: NodeJS.ProcessEnv = process.env): string {
   return join(ccshareDir(env), "config.json");
 }
 
-/** The DB token is kept apart from the committed config (§12). */
+/**
+ * The secret is kept apart from the committed config (§12). In selfhost mode
+ * it's the DB auth token; in shared mode it's the server bearer token — the
+ * config's `mode` disambiguates which one this file holds.
+ */
 function tokenPath(env: NodeJS.ProcessEnv = process.env): string {
   return join(ccshareDir(env), "token");
 }
@@ -27,9 +31,13 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
     return null;
   }
   const cfg = JSON.parse(raw) as Config;
-  // Token lives in its own 0600 file, never in config.json.
+  cfg.mode ??= "selfhost"; // configs written before the mode existed
+  // The secret lives in its own 0600 file, never in config.json.
   const token = await readToken(env);
-  if (token) cfg.storage.token = token;
+  if (token) {
+    if (cfg.mode === "shared" && cfg.server) cfg.server.token = token;
+    else if (cfg.storage) cfg.storage.token = token;
+  }
   return cfg;
 }
 
@@ -37,8 +45,19 @@ export async function saveConfig(cfg: Config, env: NodeJS.ProcessEnv = process.e
   const dir = ccshareDir(env);
   await mkdir(dir, { recursive: true });
 
-  const { token, ...storage } = cfg.storage;
-  const onDisk: Config = { ...cfg, storage };
+  // Strip both possible secrets before the config touches disk.
+  const onDisk: Config = { ...cfg };
+  let token: string | undefined;
+  if (cfg.storage) {
+    const { token: t, ...storage } = cfg.storage;
+    onDisk.storage = storage;
+    token ??= t;
+  }
+  if (cfg.server) {
+    const { token: t, ...server } = cfg.server;
+    onDisk.server = server;
+    token ??= t;
+  }
   await writeFile(configPath(env), JSON.stringify(onDisk, null, 2) + "\n", "utf8");
 
   if (token) await writeToken(token, env);
@@ -60,6 +79,7 @@ async function writeToken(token: string, env: NodeJS.ProcessEnv): Promise<void> 
   await chmod(p, 0o600);
 }
 
+/** A selfhost config: this machine talks to the storage adapter directly. */
 export function newConfig(opts: {
   driver: StorageDriver;
   url: string;
@@ -71,7 +91,28 @@ export function newConfig(opts: {
     throw new Error(`invalid name "${opts.name}" — use letters, digits, and hyphens only`);
   }
   return {
+    mode: "selfhost",
     storage: { driver: opts.driver, url: opts.url, token: opts.token },
+    name: opts.name,
+    pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
+    configDirs: opts.configDirs,
+    logLevel: "info",
+  };
+}
+
+/** A shared-hosting config: this machine talks to the ccshare server. */
+export function newSharedConfig(opts: {
+  serverUrl: string;
+  token: string;
+  name: string;
+  configDirs: string[];
+}): Config {
+  if (!isValidName(opts.name)) {
+    throw new Error(`invalid name "${opts.name}" — use letters, digits, and hyphens only`);
+  }
+  return {
+    mode: "shared",
+    server: { url: opts.serverUrl, token: opts.token },
     name: opts.name,
     pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
     configDirs: opts.configDirs,
