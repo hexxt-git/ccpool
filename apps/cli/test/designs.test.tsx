@@ -71,3 +71,37 @@ describe("designs render", () => {
     });
   }
 });
+
+describe("no data / never sync designs render", () => {
+  const noneVm: ViewModel = {
+    samples: [],
+    shares: [],
+    members: [],
+    users: [],
+    source: "none",
+    stale: false,
+    daemonRunning: false,
+    tokenExpired: false,
+    account: null,
+    updatedAt: null,
+  };
+  const model = toDesignModel(noneVm, "alice", now);
+
+  it("populates the 4 members named xxxx with mock values", () => {
+    expect(model.disconnected).toBe(true);
+    expect(model.members.length).toBe(4);
+    for (const m of model.members) {
+      expect(m.name).toBe("xxxx");
+    }
+  });
+
+  for (const d of DESIGNS) {
+    it(`renders "${d.name}" on empty data without throwing, showing xxxx rows`, () => {
+      const { lastFrame, unmount } = render(<Box>{d.render(model, 108, 24, 0)}</Box>);
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("xxxx");
+      expect(frame).toContain("40%"); // default five_hour mock pct
+      unmount();
+    });
+  }
+});

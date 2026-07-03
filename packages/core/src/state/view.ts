@@ -49,10 +49,24 @@ export async function computeSharedView(storage: Storage, now = Date.now()): Pro
   } catch {
     /* no markers table — attribute without markers */
   }
+
+  // Merge latest samples with samplesSince (deduplicating by cap + capturedAt)
+  // to ensure that a cap with a current reading (even if older than the window)
+  // is always attributed (falling back to unknown) rather than skipped entirely.
+  const allSamples = [...samplesSince];
+  const seen = new Set(samplesSince.map((s) => `${s.cap}:${s.capturedAt}`));
+  for (const s of latest) {
+    const key = `${s.cap}:${s.capturedAt}`;
+    if (!seen.has(key)) {
+      allSamples.push(s);
+      seen.add(key);
+    }
+  }
+
   return {
     generatedAt: new Date(now).toISOString(),
     samples: latest,
-    shares: attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince),
+    shares: attributeShares(allSamples, messagesSince, now, resetsSince, markersSince),
     members: summarizeMembers(messagesSince),
     users,
   };

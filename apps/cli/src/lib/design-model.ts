@@ -69,16 +69,34 @@ const SOURCE_LABEL: Record<ViewOrigin, string> = {
 export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now()): DesignModel {
   const byCapSample = new Map(vm.samples.map((s) => [s.cap, s]));
   const caps: DesignCap[] = [];
+
+  const isDisconnected = vm.stale || vm.source === "none" || vm.updatedAt === null;
+
   for (const cap of CAP_KINDS) {
     const s = byCapSample.get(cap);
-    if (!s) continue;
-    caps.push({
-      kind: cap,
-      label: LONG[cap],
-      short: SHORT[cap],
-      pct: s.pct,
-      resets: countdown(s.resetsAt, now),
-    });
+    if (s) {
+      caps.push({
+        kind: cap,
+        label: LONG[cap],
+        short: SHORT[cap],
+        pct: s.pct,
+        resets: countdown(s.resetsAt, now),
+      });
+    } else if (isDisconnected) {
+      // Mock cap values for "no data" / "never sync" / "offline" cases so we can show xxxx rows
+      let defaultPct = 0;
+      if (cap === "five_hour") defaultPct = 40;
+      else if (cap === "seven_day") defaultPct = 15;
+      else if (cap === "seven_day_opus") defaultPct = 30;
+
+      caps.push({
+        kind: cap,
+        label: LONG[cap],
+        short: SHORT[cap],
+        pct: defaultPct,
+        resets: "",
+      });
+    }
   }
 
   // gather every name that appears in shares (authoritative; sums to the tank)
@@ -113,12 +131,12 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     return (b.byCap[sortCap] ?? 0) - (a.byCap[sortCap] ?? 0);
   });
 
-  // DB unreachable but the tank is still cached (offline): we can't know the real
-  // per-person split, so show a placeholder — `DISCONNECTED_ROWS` rows with
-  // random-looking shares that add up to each cached window — rather than an empty
-  // list. The split is seeded from the cap value so it stays put across the TUI's
-  // frequent re-renders (only changing if the cached tank changes).
-  const disconnected = vm.stale && caps.length > 0;
+  // DB unreachable but the tank is still cached (offline) or no data/never synced:
+  // we can't know the real per-person split, so show a placeholder —
+  // `DISCONNECTED_ROWS` rows with random-looking shares that add up to each cached
+  // window — rather than an empty list. The split is seeded from the cap value so
+  // it stays put across the TUI's frequent re-renders (only changing if the cached tank changes).
+  const disconnected = isDisconnected && caps.length > 0;
   if (disconnected) {
     const splits = new Map<CapKind, number[]>(
       caps.map((c) => [c.kind, splitTotal(c.pct, DISCONNECTED_ROWS, seedFor(c.kind, c.pct))])

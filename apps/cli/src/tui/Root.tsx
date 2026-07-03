@@ -4,15 +4,12 @@ import type { Config } from "@ccshare/core";
 import { makeViewSource } from "../lib/backend.js";
 import { App } from "./App.js";
 import { InitScreen } from "./screens/Init.js";
-import { ConfigScreen } from "./screens/Config.js";
 
 /**
  * The TUI-first entry. The bin opens this: not configured → onboarding wizard;
- * configured → the live view, with `c` to open the tabbed config screen. The old
- * `init` / `config` flag commands stay as a scriptable fallback but everything
- * here is reachable without them.
+ * configured → the live view, with `c` to re-initialize configuration.
  */
-type Screen = "init" | "status" | "config";
+type Screen = "init" | "status";
 
 export function Root({ initialConfig }: { initialConfig: Config | null }): React.ReactElement {
   const { exit } = useApp();
@@ -37,22 +34,15 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   if (!config || screen === "init")
     return (
       <InitScreen
+        initialConfig={config}
         onDone={(cfg) => {
           setConfig(cfg);
           setScreen("status");
         }}
         onQuit={exit}
+        onCancel={config ? () => setScreen("status") : undefined}
       />
     );
 
-  if (screen === "config")
-    return (
-      <ConfigScreen
-        config={config}
-        onChange={(cfg) => setConfig(cfg)}
-        onBack={() => setScreen("status")}
-      />
-    );
-
-  return <App cfg={config} viewSource={viewSource!} onConfigure={() => setScreen("config")} />;
+  return <App cfg={config} viewSource={viewSource!} onConfigure={() => setScreen("init")} />;
 }

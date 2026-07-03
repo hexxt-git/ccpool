@@ -664,10 +664,24 @@ const [latest, samplesSince, messagesSince, resetsSince, users] = await Promise.
 // Fetch markers defensively — a DB missing the table for any reason degrades to
 // "no markers" rather than letting one missing table blank the whole view.
 const markersSince = await storage.getUsageMarkersSince(since).catch(() => []);
+
+// Merge latest samples into samplesSince (deduplicating) to guarantee that
+// a cap with a current reading (even if older than the window) is always
+// attributed (falling back to unknown) rather than skipped entirely.
+const allSamples = [...samplesSince];
+const seen = new Set(samplesSince.map((s) => `${s.cap}:${s.capturedAt}`));
+for (const s of latest) {
+  const key = `${s.cap}:${s.capturedAt}`;
+  if (!seen.has(key)) {
+    allSamples.push(s);
+    seen.add(key);
+  }
+}
+
 return {
   generatedAt,
   samples: latest,
-  shares: attributeShares(samplesSince, messagesSince, now, resetsSince, markersSince), // §7
+  shares: attributeShares(allSamples, messagesSince, now, resetsSince, markersSince), // §7
   members: summarizeMembers(messagesSince), // per-name token totals + last-seen
   users,
 };

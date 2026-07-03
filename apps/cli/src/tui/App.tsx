@@ -22,7 +22,7 @@ const MESSAGES: { label: string; url?: string }[] = [
   { label: "✎ open an issue on GitHub", url: GITHUB_URL },
 ];
 const SHORTCUTS = "⇥ switch · ↑↓ scroll · r refresh · q quit";
-const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · c configure · q quit";
+const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · c re-init · q quit";
 
 /**
  * Live shared view. Polls the DB / state.json every 2s and re-renders the clock

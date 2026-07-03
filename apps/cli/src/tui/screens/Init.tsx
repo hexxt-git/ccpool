@@ -16,23 +16,11 @@ import {
   type Classification,
   type SharedProbe,
 } from "../../lib/setup.js";
-import { spawnDaemon } from "../../commands/daemon.js";
-import { Clawd, Cell } from "../designs/parts.js";
+import { spawnDaemon, stopDaemonProcess } from "../../commands/daemon.js";
+import { Clawd } from "../designs/parts.js";
 import { P } from "../designs/palette.js";
 import { useTermSize } from "../use-term-size.js";
 import { DRIVERS, DRIVER_DESC, driverUrl, needsToken } from "../parts-extra.js";
-
-/**
- * Guided, one-question-at-a-time onboarding. Fields start empty and reveal step
- * by step; answered steps stack as a checklist above the active question.
- *
- * Two branches after the mode question: shared hosting asks for the two
- * passwords and commits by joining (or, after a confirmation, creating) the
- * group on the server; self-host keeps the connect-and-inspect flow (empty →
- * initialize, ccshare → join, foreign / mismatch → refuse). Either way the
- * final "continue" commits: it writes config, and starts the daemon — then
- * hands the saved config up so the app opens on the live view.
- */
 
 type StepKey =
   | "name"
@@ -42,9 +30,11 @@ type StepKey =
   | "token"
   | "inspect"
   | "groupPassword"
+  | "groupPasswordConfirm"
   | "memberPassword"
-  | "daemon"
+  | "memberPasswordConfirm"
   | "done";
+
 const ORDER: StepKey[] = [
   "name",
   "mode",
@@ -53,21 +43,24 @@ const ORDER: StepKey[] = [
   "token",
   "inspect",
   "groupPassword",
+  "groupPasswordConfirm",
   "memberPassword",
-  "daemon",
+  "memberPasswordConfirm",
   "done",
 ];
+
 const STEP_LABEL: Record<StepKey, string> = {
-  name: "name",
-  mode: "hosting",
-  driver: "storage",
-  url: "url",
-  token: "token",
-  inspect: "database",
-  groupPassword: "group pass",
-  memberPassword: "your pass",
-  daemon: "daemon",
-  done: "done",
+  name: "Name",
+  mode: "Hosting",
+  driver: "Storage driver",
+  url: "Database URL",
+  token: "Auth token",
+  inspect: "Database action",
+  groupPassword: "Group password",
+  groupPasswordConfirm: "Confirm group password",
+  memberPassword: "Member password",
+  memberPasswordConfirm: "Confirm member password",
+  done: "Done",
 };
 
 const MODES: { value: Mode; label: string; desc: string }[] = [
@@ -82,13 +75,17 @@ interface Answers {
   url?: string;
   token?: string;
   groupPassword?: string;
+  groupPasswordConfirm?: string;
   memberPassword?: string;
+  memberPasswordConfirm?: string;
   dbAction?: "initialize" | "join";
-  daemonRunning?: boolean;
 }
 
-const stepVisible = (k: StepKey, a: Answers): boolean => {
+const stepVisible = (k: StepKey, a: Answers, probe: SharedProbe | "checking" | null): boolean => {
   const shared = a.mode === "shared";
+  const groupExists = probe && typeof probe === "object" && probe.ok && probe.groupExists;
+  const memberExists = probe && typeof probe === "object" && probe.ok && probe.memberExists;
+
   switch (k) {
     case "driver":
     case "url":
@@ -97,40 +94,55 @@ const stepVisible = (k: StepKey, a: Answers): boolean => {
     case "token":
       return !shared && needsToken(a.driver ?? "libsql", a.url ?? "");
     case "groupPassword":
+      return shared;
+    case "groupPasswordConfirm":
+      return shared && !groupExists; // only if setting up a new group
     case "memberPassword":
       return shared;
+    case "memberPasswordConfirm":
+      return shared && (!groupExists || !memberExists); // only if signing up a new group or member
     default:
       return true;
   }
 };
 
-type Commit = "idle" | "saving" | "error" | "confirm-create";
+type Commit = "idle" | "saving" | "error";
 
 export function InitScreen({
   onDone,
   onQuit,
+  onCancel,
+  initialConfig,
 }: {
   onDone: (cfg: Config) => void;
   onQuit: () => void;
+  onCancel?: () => void;
+  initialConfig?: Config | null;
 }): React.ReactElement {
   const { isRawModeSupported } = useStdin();
   const { cols, rows } = useTermSize();
 
-  const [answers, setAnswers] = useState<Answers>({});
+  const [answers, setAnswers] = useState<Answers>(() => {
+    if (!initialConfig) return {};
+    return {
+      name: initialConfig.name,
+      mode: initialConfig.mode,
+      driver: initialConfig.storage?.driver,
+      url: initialConfig.storage?.url,
+      token: initialConfig.storage?.token,
+    };
+  });
   const [step, setStep] = useState<StepKey>("name");
   const [buf, setBuf] = useState("");
   const [sel, setSel] = useState(0);
-  const [yes, setYes] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [inspect, setInspect] = useState<Classification | "checking">("checking");
   const [commit, setCommit] = useState<Commit>("idle");
   const [commitErr, setCommitErr] = useState<string | null>(null);
-  // Shared-hosting pre-check: who you are, which server, and whether a group
-  // already exists — so the password steps can say "create" vs "join".
   const [probe, setProbe] = useState<SharedProbe | "checking" | null>(null);
 
-  const visible = ORDER.filter((k) => stepVisible(k, answers));
+  const visible = ORDER.filter((k) => stepVisible(k, answers, probe));
   const stepNo = visible.indexOf(step) + 1;
   const isShared = answers.mode === "shared";
 
@@ -146,9 +158,13 @@ export function InitScreen({
             ? (a.name ?? "")
             : key === "groupPassword"
               ? (a.groupPassword ?? "")
-              : key === "memberPassword"
-                ? (a.memberPassword ?? "")
-                : ""
+              : key === "groupPasswordConfirm"
+                ? (a.groupPasswordConfirm ?? "")
+                : key === "memberPassword"
+                  ? (a.memberPassword ?? "")
+                  : key === "memberPasswordConfirm"
+                    ? (a.memberPasswordConfirm ?? "")
+                    : ""
     );
     setSel(
       key === "mode"
@@ -158,7 +174,6 @@ export function InitScreen({
           )
         : Math.max(0, DRIVERS.indexOf(a.driver ?? "libsql"))
     );
-    setYes(a.daemonRunning ?? true);
     if (key === "inspect") setInspect("checking");
     if (key === "done") {
       setCommit("idle");
@@ -169,21 +184,25 @@ export function InitScreen({
   const advance = (patch: Answers): void => {
     const next = { ...answers, ...patch };
     setAnswers(next);
-    const vis = ORDER.filter((k) => stepVisible(k, next));
+    const vis = ORDER.filter((k) => stepVisible(k, next, probe));
     const nk = vis[vis.indexOf(step) + 1];
     if (nk) enter(nk, next);
   };
 
   const back = (): void => {
     const idx = visible.indexOf(step);
-    if (idx <= 0) return onQuit();
+    if (idx <= 0) {
+      if (onCancel) onCancel();
+      else onQuit();
+      return;
+    }
     enter(visible[idx - 1]!, answers);
   };
 
   // Probe the server once the group picks shared hosting, so the account line and
   // the create/join wording are ready by the group-password step.
   useEffect(() => {
-    if (answers.mode !== "shared") {
+    if (answers.mode !== "shared" || !answers.name) {
       setProbe(null);
       return;
     }
@@ -213,30 +232,37 @@ export function InitScreen({
     };
   }, [step, inspect, answers.driver, answers.url, answers.token]);
 
-  const finish = async (allowCreate = false): Promise<void> => {
+  const finish = async (): Promise<void> => {
     setCommit("saving");
     setCommitErr(null);
+
+    // Stop existing daemon if re-initializing
+    if (initialConfig) {
+      try {
+        stopDaemonProcess(initialConfig);
+      } catch {
+        // ignore errors stopping existing daemon
+      }
+    }
+
     if (isShared) {
+      const groupExists = probe && typeof probe === "object" && probe.ok && probe.groupExists;
       const res = await applySharedJoin({
         name: answers.name!,
         groupPassword: answers.groupPassword!,
         memberPassword: answers.memberPassword!,
-        allowCreate,
+        allowCreate: !groupExists,
       });
       if (!res.ok) {
-        if (res.canCreate) {
-          setCommitErr(res.error);
-          setCommit("confirm-create");
-        } else {
-          setCommitErr(res.error);
-          setCommit("error");
-        }
+        setCommitErr(res.error);
+        setCommit("error");
         return;
       }
-      if (answers.daemonRunning ?? true) spawnDaemon(res.config);
+      spawnDaemon(res.config);
       onDone(res.config);
       return;
     }
+
     const cfg = newConfig({
       driver: answers.driver!,
       url: answers.url!,
@@ -250,12 +276,76 @@ export function InitScreen({
       setCommit("error");
       return;
     }
-    if (answers.daemonRunning ?? true) spawnDaemon(res.config);
+    spawnDaemon(res.config);
     onDone(res.config);
   };
 
+  const getHeading = (): string => {
+    const groupExists = probe && typeof probe === "object" && probe.ok && probe.groupExists;
+    const memberExists = probe && typeof probe === "object" && probe.ok && probe.memberExists;
+
+    switch (step) {
+      case "name":
+        return `${stepNo}. What is your name?`;
+      case "mode":
+        return `${stepNo}. How is the group's data hosted?`;
+      case "driver":
+        return `${stepNo}. Select database driver:`;
+      case "url":
+        return `${stepNo}. Enter database URL:`;
+      case "token":
+        return `${stepNo}. Enter database auth token:`;
+      case "inspect":
+        return `${stepNo}. Verify connection:`;
+      case "groupPassword":
+        return `${stepNo}. ${
+          groupExists
+            ? "Enter the group password (set by your team):"
+            : "Set a group password (everyone will use this to join):"
+        }`;
+      case "groupPasswordConfirm":
+        return `${stepNo}. Confirm group password:`;
+      case "memberPassword":
+        return `${stepNo}. ${
+          groupExists && memberExists
+            ? "Enter your member password:"
+            : `Set a password for "${answers.name}" (protects your name from impersonation):`
+        }`;
+      case "memberPasswordConfirm":
+        return `${stepNo}. Confirm your member password:`;
+      case "done":
+        return "Ready to finalize configuration";
+    }
+  };
+
+  const getPlaceholder = (): string => {
+    switch (step) {
+      case "name":
+        return "letters, digits, hyphens";
+      case "url":
+        return `⏎ for default: ${driverUrl(answers.driver ?? "libsql")}`;
+      case "groupPassword":
+        return "at least 8 characters";
+      case "groupPasswordConfirm":
+        return "re-type group password to confirm";
+      case "memberPassword":
+        return "at least 8 characters";
+      case "memberPasswordConfirm":
+        return "re-type member password to confirm";
+      case "token":
+        return "blank if none";
+      default:
+        return "";
+    }
+  };
+
   const inspectKind = typeof inspect === "string" ? inspect : inspect.kind;
-  const isMasked = step === "token" || step === "groupPassword" || step === "memberPassword";
+  const isMasked =
+    step === "token" ||
+    step === "groupPassword" ||
+    step === "groupPasswordConfirm" ||
+    step === "memberPassword" ||
+    step === "memberPasswordConfirm";
 
   useInput(
     (input, key) => {
@@ -264,7 +354,9 @@ export function InitScreen({
         step === "url" ||
         step === "token" ||
         step === "groupPassword" ||
-        step === "memberPassword"
+        step === "groupPasswordConfirm" ||
+        step === "memberPassword" ||
+        step === "memberPasswordConfirm"
       ) {
         if (key.return) {
           if (step === "name") {
@@ -273,8 +365,10 @@ export function InitScreen({
             advance({ name: v });
           } else if (step === "url") {
             advance({ url: buf.trim() || driverUrl(answers.driver ?? "libsql") });
-          } else if (step === "groupPassword" || step === "memberPassword") {
-            if (isShared && step === "groupPassword") {
+          } else if (step === "token") {
+            advance({ token: buf.trim() });
+          } else if (step === "groupPassword") {
+            if (isShared) {
               if (probe === "checking") return;
               if (probe && typeof probe === "object" && !probe.ok) {
                 setProbe("checking");
@@ -286,9 +380,19 @@ export function InitScreen({
             }
             const v = buf;
             if (v.length < 8) return setErr("at least 8 characters");
-            advance({ [step]: v } as Answers);
-          } else {
-            advance({ token: buf.trim() });
+            advance({ groupPassword: v });
+          } else if (step === "groupPasswordConfirm") {
+            const v = buf;
+            if (v !== answers.groupPassword) return setErr("passwords do not match");
+            advance({ groupPasswordConfirm: v });
+          } else if (step === "memberPassword") {
+            const v = buf;
+            if (v.length < 8) return setErr("at least 8 characters");
+            advance({ memberPassword: v });
+          } else if (step === "memberPasswordConfirm") {
+            const v = buf;
+            if (v !== answers.memberPassword) return setErr("passwords do not match");
+            advance({ memberPasswordConfirm: v });
           }
         } else if (key.escape) back();
         else if (key.backspace || key.delete) {
@@ -336,24 +440,11 @@ export function InitScreen({
         } else if (inspectKind === "error") {
           if (key.return) setInspect("checking");
           else if (key.escape) back();
-        } else if (key.return || key.escape) back(); // foreign / newer / mismatch: only back
-        return;
-      }
-      if (step === "daemon") {
-        if (input === "y" || input === "Y") advance({ daemonRunning: true });
-        else if (input === "n" || input === "N") advance({ daemonRunning: false });
-        else if (key.leftArrow || key.rightArrow || input === " ") setYes((v) => !v);
-        else if (key.return) advance({ daemonRunning: yes });
-        else if (key.escape) back();
+        } else if (key.return || key.escape) back();
         return;
       }
       // done
       if (commit === "saving") return;
-      if (commit === "confirm-create") {
-        if (input === "y" || input === "Y" || key.return) void finish(true);
-        else if (input === "n" || input === "N" || key.escape) setCommit("idle");
-        return;
-      }
       if (key.return) void finish();
       else if (key.escape) {
         if (commit === "error") setCommit("idle");
@@ -363,7 +454,7 @@ export function InitScreen({
     { isActive: !!isRawModeSupported }
   );
 
-  const w = Math.min(74, cols - 4);
+  const w = Math.min(88, cols - 4);
   const answered = visible.slice(0, stepNo - 1);
   const value = (k: StepKey): string =>
     k === "name"
@@ -378,74 +469,37 @@ export function InitScreen({
               ? answers.token
                 ? "•".repeat(Math.min(8, answers.token.length))
                 : "none"
-              : k === "groupPassword" || k === "memberPassword"
+              : k === "groupPassword" ||
+                  k === "groupPasswordConfirm" ||
+                  k === "memberPassword" ||
+                  k === "memberPasswordConfirm"
                 ? "•".repeat(Math.min(8, (answers[k] ?? "").length))
                 : k === "inspect"
                   ? answers.dbAction === "join"
                     ? "join existing"
                     : "initialize (empty)"
-                  : k === "daemon"
-                    ? answers.daemonRunning
-                      ? "start now"
-                      : "don't start"
-                    : "";
+                  : "";
 
-  const isField =
-    step === "name" ||
-    step === "url" ||
-    step === "token" ||
-    step === "groupPassword" ||
-    step === "memberPassword";
-  const groupExists = probe && probe !== "checking" && probe.ok && probe.groupExists;
-  const question =
-    step === "name"
-      ? "what should we call you?"
-      : step === "url"
-        ? "database url?"
-        : step === "groupPassword"
-          ? probe === "checking"
-            ? "checking the server connection..."
-            : probe && typeof probe === "object" && !probe.ok
-              ? "could not reach server"
-              : groupExists
-                ? "the group password (set by your team)?"
-                : "set a group password (everyone shares it)?"
-          : step === "memberPassword"
-            ? "your own password?"
-            : "auth token?";
-  const heading = isField
-    ? `${stepNo}. ${question}`
-    : step === "mode"
-      ? `${stepNo}. how is the group's data hosted?`
-      : step === "driver"
-        ? `${stepNo}. where to store data?`
-        : step === "inspect"
-          ? "check the database"
-          : step === "daemon"
-            ? "start the daemon now?"
-            : "ready";
+  const heading = getHeading();
+  const placeholder = getPlaceholder();
   const hint =
     step === "mode" || step === "driver"
       ? "↑↓ select · ⏎ next · esc back"
-      : step === "daemon"
-        ? "y / n · esc back"
-        : step === "inspect"
-          ? inspectKind === "empty" || inspectKind === "ccshare"
-            ? "y / n · esc back"
-            : inspectKind === "error"
-              ? "⏎ retry · esc back"
-              : "esc back"
-          : step === "groupPassword" && probe === "checking"
-            ? "checking server…"
-            : step === "groupPassword" && probe && typeof probe === "object" && !probe.ok
-              ? "⏎ retry · esc back"
-              : step === "done"
-                ? commit === "saving"
-                  ? "setting up…"
-                  : commit === "confirm-create"
-                    ? "y create · n back"
-                    : "⏎ continue · esc back"
-                : "⏎ next · esc back";
+      : step === "inspect"
+        ? inspectKind === "empty" || inspectKind === "ccshare"
+          ? "y / n · esc back"
+          : inspectKind === "error"
+            ? "⏎ retry · esc back"
+            : "esc back"
+        : step === "groupPassword" && probe === "checking"
+          ? "checking server…"
+          : step === "groupPassword" && probe && typeof probe === "object" && !probe.ok
+            ? "⏎ retry · esc back"
+            : step === "done"
+              ? commit === "saving"
+                ? "setting up…"
+                : "⏎ continue · esc back"
+              : "⏎ next · esc back";
 
   return (
     <Box flexDirection="column" width={cols} height={Math.max(1, rows - 1)} paddingX={1}>
@@ -459,28 +513,59 @@ export function InitScreen({
         paddingX={2}
         paddingY={1}
       >
-        <Box>
+        <Box alignSelf="center" marginBottom={1}>
           <Clawd color={P.orange} />
-          <Box flexDirection="column" marginLeft={3} flexGrow={1}>
-            <Box justifyContent="space-between">
-              <Text color={P.orange} bold>
-                ccshare setup
-              </Text>
-              <Text color={P.faint}>
-                {stepNo}/{visible.length}
-              </Text>
-            </Box>
-            <Text color={P.dim}>not configured on this machine yet.</Text>
-          </Box>
         </Box>
-        <Box height={1} />
+
+        <Box flexDirection="column" marginBottom={1}>
+          <Box justifyContent="space-between">
+            <Text color={P.orange} bold>
+              {initialConfig ? "ccshare re-initialization" : "ccshare setup"}
+            </Text>
+            <Text color={P.faint}>
+              {stepNo}/{visible.length}
+            </Text>
+          </Box>
+          <Text color={P.dim}>
+            {initialConfig
+              ? "Re-configuring settings on this machine."
+              : "Not configured on this machine yet."}
+          </Text>
+        </Box>
+
+        {isShared && probe && typeof probe === "object" && probe.ok ? (
+          <Box
+            flexDirection="column"
+            borderStyle="single"
+            borderColor={P.faint}
+            paddingX={1}
+            marginBottom={1}
+            width={w - 6}
+          >
+            <Text color={P.dim}>
+              Signed in: <Text color={P.cream}>{probe.account.email ?? probe.account.id}</Text>
+            </Text>
+            <Text color={P.dim}>
+              Server: <Text color={P.cream}>{probe.serverUrl}</Text>
+            </Text>
+            <Box height={1} />
+            <Text color={P.orange} bold>
+              Status:{" "}
+              {!probe.groupExists
+                ? "Creating a new group (account)"
+                : probe.memberExists
+                  ? "Logging in (group & member exist)"
+                  : "Signing up a new member in the existing group"}
+            </Text>
+          </Box>
+        ) : null}
 
         {answered.map((k) => (
           <Box key={k}>
             <Text color={P.green}>✓ </Text>
-            <Cell w={12}>
-              <Text color={P.dim}>{STEP_LABEL[k]}</Text>
-            </Cell>
+            <Box width={26}>
+              <Text color={P.dim}>{STEP_LABEL[k]}:</Text>
+            </Box>
             <Text color={P.cream}>{value(k)}</Text>
           </Box>
         ))}
@@ -490,9 +575,6 @@ export function InitScreen({
         <Text color={P.orange} bold>
           {heading}
         </Text>
-        {isShared && (step === "groupPassword" || step === "memberPassword") ? (
-          <ProbeBanner probe={probe} />
-        ) : null}
         <Box height={1} />
 
         {step === "mode" ? (
@@ -500,11 +582,11 @@ export function InitScreen({
             {MODES.map((m, i) => (
               <Box key={m.value}>
                 <Text color={i === sel ? P.orange : P.faint}>{i === sel ? "▸ " : "  "}</Text>
-                <Cell w={16}>
+                <Box width={16}>
                   <Text color={i === sel ? P.cream : P.dim} bold={i === sel}>
                     {m.label}
                   </Text>
-                </Cell>
+                </Box>
                 <Text color={i === sel ? P.dim : P.faint}>{m.desc}</Text>
               </Box>
             ))}
@@ -514,25 +596,14 @@ export function InitScreen({
             {DRIVERS.map((d, i) => (
               <Box key={d}>
                 <Text color={i === sel ? P.orange : P.faint}>{i === sel ? "▸ " : "  "}</Text>
-                <Cell w={12}>
+                <Box width={12}>
                   <Text color={i === sel ? P.cream : P.dim} bold={i === sel}>
                     {d}
                   </Text>
-                </Cell>
+                </Box>
                 <Text color={i === sel ? P.dim : P.faint}>{DRIVER_DESC[d]}</Text>
               </Box>
             ))}
-          </Box>
-        ) : step === "daemon" ? (
-          <Box>
-            <Text color={yes ? P.green : P.faint} bold={yes}>
-              {yes ? "▸ Yes" : "  Yes"}
-            </Text>
-            <Text color={P.faint}>{"     "}</Text>
-            <Text color={!yes ? P.red : P.faint} bold={!yes}>
-              {!yes ? "▸ No" : "  No"}
-            </Text>
-            <Text color={P.faint}> records usage in the background</Text>
           </Box>
         ) : step === "inspect" ? (
           <InspectView inspect={inspect} url={answers.url ?? ""} />
@@ -551,14 +622,6 @@ export function InitScreen({
               <>
                 <Text color={P.red}>✗ {commitErr}</Text>
                 <Text color={P.dim}>esc to go back and change the answers.</Text>
-              </>
-            ) : commit === "confirm-create" ? (
-              <>
-                <Text color={P.amber}>{commitErr}.</Text>
-                <Box marginTop={1}>
-                  <Text color={P.cream}>create the group with these passwords?</Text>
-                  <Text color={P.faint}>{"  "}[y/n]</Text>
-                </Box>
               </>
             ) : commit === "saving" ? (
               <Text color={P.amber}>
@@ -580,30 +643,25 @@ export function InitScreen({
           </Box>
         ) : (
           <Box>
-            <Cell w={14}>
+            <Box width={16}>
               <Text color={P.orange} bold>
                 {STEP_LABEL[step]}:
               </Text>
-            </Cell>
+            </Box>
             <Box flexDirection="column" flexGrow={1}>
               <Text>
                 <Text color={P.faint}>{"› "}</Text>
                 {buf.length ? (
-                  <Text color={P.cream}>{isMasked ? "•".repeat(buf.length) : buf}</Text>
+                  <>
+                    <Text color={P.cream}>{isMasked ? "•".repeat(buf.length) : buf}</Text>
+                    <Text color={P.orange}>▏</Text>
+                  </>
                 ) : (
-                  <Text color={P.faint}>
-                    {step === "name"
-                      ? "letters, digits, hyphens"
-                      : step === "url"
-                        ? `⏎ for ${driverUrl(answers.driver ?? "libsql")}`
-                        : step === "groupPassword"
-                          ? "everyone in the group uses this"
-                          : step === "memberPassword"
-                            ? "protects your name from impersonation"
-                            : "blank if none"}
-                  </Text>
+                  <>
+                    <Text color={P.orange}>▏</Text>
+                    <Text color={P.faint}>{placeholder}</Text>
+                  </>
                 )}
-                <Text color={P.orange}>▏</Text>
               </Text>
               {err ? <Text color={P.red}>{err}</Text> : null}
             </Box>
@@ -614,41 +672,6 @@ export function InitScreen({
       <Box justifyContent="center">
         <Text color={P.faint}>{hint}</Text>
       </Box>
-    </Box>
-  );
-}
-
-/** Shows who you are, which server, and whether you're creating vs joining. */
-export function ProbeBanner({
-  probe,
-}: {
-  probe: SharedProbe | "checking" | null;
-}): React.ReactElement {
-  if (probe === null || probe === "checking") {
-    return <Text color={P.faint}>checking the server…</Text>;
-  }
-  if (!probe.ok) {
-    return <Text color={P.red}>✗ {probe.error}</Text>;
-  }
-  const isMemberExist = probe.groupExists && probe.memberExists;
-  return (
-    <Box flexDirection="column">
-      <Text color={P.dim}>
-        signed in as <Text color={P.cream}>{probe.account.email ?? probe.account.id}</Text>
-      </Text>
-      <Text color={P.dim}>
-        server <Text color={P.cream}>{probe.serverUrl}</Text>
-        {"  ·  "}
-        {probe.groupExists ? (
-          <Text color={P.blue}>joining your team&apos;s group</Text>
-        ) : (
-          <Text color={P.orange}>creating a new group</Text>
-        )}
-      </Text>
-      <Box height={1} />
-      <Text color={P.dim}>
-        {isMemberExist ? "member exists, enter password" : "signing up new member"}
-      </Text>
     </Box>
   );
 }
