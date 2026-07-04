@@ -142,7 +142,7 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     me,
     account: vm.account ?? "—",
     source: vm.source,
-    sync: vm.source === "live" ? "live" : formatAge(vm.updatedAt, now),
+    sync: vm.source === "live" ? "live" : formatAge(vm.syncedAt, now),
     daemonRunning: vm.daemonRunning,
     members,
     active: members.filter((m) => m.active).length,

@@ -1,14 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "ink";
 import type { Config } from "@ccshare/core";
 import { makeViewSource } from "../lib/backend.js";
-import { isDaemonRunning, spawnDaemon } from "../commands/daemon.js";
+import { logout } from "../lib/config.js";
+import { isDaemonRunning, spawnDaemon, stopDaemonProcess } from "../commands/daemon.js";
 import { App } from "./App.js";
 import { InitScreen } from "./screens/Init.js";
 
 /**
  * The TUI-first entry. The bin opens this: not configured → onboarding wizard;
- * configured → the live view, with `c` to re-initialize configuration.
+ * configured → the live view, with `r` to re-initialize configuration.
  */
 type Screen = "init" | "status";
 
@@ -23,6 +24,17 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   const [screen, setScreen] = useState<Screen>(isConfigured(initialConfig) ? "status" : "init");
 
   const configured = isConfigured(config);
+
+  // The server rejected our bearer (revoked/rotated, or the ledger was reset).
+  // Retrying can't fix a dead token, so log out: stop the doomed daemon, delete the
+  // token file, drop it from the in-memory config (→ unconfigured), and send the
+  // user to the re-init wizard to re-authenticate (§13).
+  const handleLoggedOut = useCallback(() => {
+    if (config) stopDaemonProcess(config);
+    void logout();
+    setConfig((c) => (c?.server ? { ...c, server: { url: c.server.url } } : c));
+    setScreen("init");
+  }, [config]);
 
   // One long-lived ViewSource for the live view; recreated only when the backend
   // target changes (a reconfigure), and closed on unmount / swap. Only built once
@@ -66,5 +78,12 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
       />
     );
 
-  return <App cfg={config} viewSource={viewSource!} onConfigure={() => setScreen("init")} />;
+  return (
+    <App
+      cfg={config}
+      viewSource={viewSource!}
+      onConfigure={() => setScreen("init")}
+      onLoggedOut={handleLoggedOut}
+    />
+  );
 }

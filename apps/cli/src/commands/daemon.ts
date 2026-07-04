@@ -78,18 +78,29 @@ export async function runDaemonForeground(): Promise<void> {
   }
   const configDir = cfg.configDirs[0] ?? process.cwd();
 
-  await startDaemon({
-    // Uninitialized/unreachable backends surface through the sink's bootstrap
-    // (logged, retried) rather than blocking here — same failure path as ticks.
-    sink: makeIngestSink(cfg),
-    paths: pathsFor(configDir),
-    configDir,
-    name: cfg.name,
-    pollIntervalMs: cfg.pollIntervalMs,
-    logLevel: cfg.logLevel,
-    // re-read the name each tick so `config set name` hand-offs apply live
-    resolveName: async () => (await loadConfig())?.name ?? cfg.name,
-  });
+  try {
+    await startDaemon({
+      // Uninitialized/unreachable backends surface through the sink's bootstrap
+      // (logged, retried) rather than blocking here — same failure path as ticks.
+      sink: makeIngestSink(cfg),
+      paths: pathsFor(configDir),
+      configDir,
+      name: cfg.name,
+      pollIntervalMs: cfg.pollIntervalMs,
+      logLevel: cfg.logLevel,
+      // re-read the name each tick so `config set name` hand-offs apply live
+      resolveName: async () => (await loadConfig())?.name ?? cfg.name,
+    });
+  } catch (err) {
+    // Another daemon already owns the single-instance lock. This is the expected,
+    // healthy outcome for a redundant spawn (the TUI re-spawns on a timer, and
+    // several may fire before one wins the lock) — exit 0 quietly, don't crash.
+    if (err instanceof AlreadyRunningError) {
+      console.log(err.message);
+      return;
+    }
+    throw err;
+  }
 }
 
 /** Spawn the foreground loop detached and return. */
@@ -163,6 +174,17 @@ export async function runDaemonStatus(): Promise<void> {
       const state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
       const age = Math.round((Date.now() - Date.parse(state.updatedAt)) / 1000);
       console.log(`Last state update: ${age}s ago (${state.samples.length} caps tracked).`);
+      // The clean-sync heartbeat: a failed poll/ingest bumps `updatedAt` but not
+      // this, so a growing gap here is the signal that syncs are silently failing.
+      if (state.lastSyncAt) {
+        const syncAge = Math.round((Date.now() - Date.parse(state.lastSyncAt)) / 1000);
+        console.log(`Last full sync: ${syncAge}s ago.`);
+      } else {
+        console.log("Last full sync: never (no clean poll + ingest yet).");
+      }
+      if (state.account.authRejected) {
+        console.log("Auth rejected by the server — run `ccshare init` to re-authenticate.");
+      }
       if (state.account.tokenExpired) {
         console.log("Token expired — waiting for Claude Code to refresh auth.");
       }

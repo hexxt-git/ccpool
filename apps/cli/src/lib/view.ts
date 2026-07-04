@@ -37,7 +37,14 @@ export interface ViewModel {
   accountConflict: boolean;
   /** The observed account's id/email (never the person), from local state. */
   account: string | null;
+  /** When this snapshot was last written by the daemon (every tick). */
   updatedAt: string | null;
+  /**
+   * When the account picture was last *fully* refreshed — a clean poll + landed
+   * ingest. Drives "synced X ago" so it grows on failure instead of the per-tick
+   * `updatedAt` masking a broken poll (429) or ingest (401/unreachable).
+   */
+  syncedAt: string | null;
 }
 
 function configDirOf(cfg: Config): string {
@@ -108,6 +115,11 @@ export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewM
     else stale = true;
   }
 
+  // The daemon's ingest can be auth-rejected even while reads still succeed (a
+  // revoked/rotated bearer): it latches `authRejected` into state.json. Treat that
+  // as logged-out too, so the TUI routes to re-init instead of silently spinning.
+  if (state?.account.authRejected) loggedOut = true;
+
   let samples = dbSamples;
   let origin: ViewOrigin = dbSamples.length > 0 ? "db" : "none";
 
@@ -138,6 +150,7 @@ export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewM
     accountConflict: state?.account.conflict ?? false,
     account,
     updatedAt: state?.updatedAt ?? null,
+    syncedAt: state?.lastSyncAt ?? null,
   };
 }
 

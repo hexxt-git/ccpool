@@ -105,12 +105,12 @@ export function renderFooter(vm: ViewModel, now: number = Date.now()): string[] 
   if (vm.source === "live") notes.push("live poll — start the daemon to record history");
   const freshness =
     vm.source === "state"
-      ? `local state · ${formatAge(vm.updatedAt, now)}`
+      ? `local state · ${formatAge(vm.syncedAt, now)}`
       : vm.source === "live"
         ? "live poll"
         : vm.source === "none"
           ? "no data yet"
-          : `synced ${formatAge(vm.updatedAt, now)}`;
+          : `synced ${formatAge(vm.syncedAt, now)}`;
   return [freshness, ...notes.map((n) => `  · ${n}`)];
 }
 

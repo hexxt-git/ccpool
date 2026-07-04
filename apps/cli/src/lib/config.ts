@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { isValidName, type Config } from "@ccshare/core";
@@ -60,6 +60,15 @@ async function readToken(env: NodeJS.ProcessEnv): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Log out: delete the 0600 bearer file so the config is no longer "configured"
+ * (§13). Called when the server rejects the token (revoked/rotated) — the user is
+ * routed back to `init` to re-authenticate. Idempotent.
+ */
+export async function logout(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  await rm(tokenPath(env), { force: true });
 }
 
 async function writeToken(token: string, env: NodeJS.ProcessEnv): Promise<void> {

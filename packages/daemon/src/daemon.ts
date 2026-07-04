@@ -121,6 +121,19 @@ export class Daemon {
   private boundAccountKnown = false;
   /** A batch a previous tick failed to send; merged into the next tick's. */
   private pending: TickBatch | null = null;
+  /**
+   * Latched once the server rejects our bearer (revoked/rotated). The token is
+   * fixed at startup, so this can never clear without a restart — surfaced in
+   * `state.json` so the TUI logs the user out and routes to `init` (§13).
+   */
+  private authRejected = false;
+  /**
+   * ISO 8601 of the last tick that fully synced (fresh poll + landed ingest).
+   * Advances only on a clean tick, so the reader's "synced X ago" grows while
+   * polls (429) or ingests (401/unreachable) fail rather than resetting every
+   * tick. Persisted to `state.json`; null until the first clean sync.
+   */
+  private lastSyncAt: string | null = null;
   // Most-recent local Code activity, for deciding when an unexplained tank rise is
   // this machine's untracked overhead (activity marker, §7). Reset on restart —
   // the reader re-baselines at EOF, so we never mark against stale history.
@@ -206,6 +219,7 @@ export class Daemon {
 
     let tokenExpired = false;
     let pollFailed = false;
+    let pollOk = false; // a fresh tank reading landed this tick
     const prevSamples = this.prev;
     let samples = this.prev;
     const batch = emptyBatch();
@@ -229,6 +243,7 @@ export class Daemon {
         batch.samples.push(...fresh);
         samples = fresh;
         this.prev = fresh;
+        pollOk = true;
       } catch (err) {
         if (err instanceof UsageAuthError) {
           // 401 despite a non-expired token (e.g. clock skew). Treat like expiry.
@@ -282,6 +297,11 @@ export class Daemon {
     // idempotently, so the re-send can't double-count). On an account conflict
     // everything observed this tick is consumed but deliberately dropped — it
     // belongs to a different tank.
+    //
+    // `ingestOk` tracks whether our contribution is current — a landed ingest, or
+    // nothing new to send. It stays false on any conflict/failure, gating the clean-
+    // sync heartbeat (`lastSyncAt`) below.
+    let ingestOk = false;
     if (accountConflict) {
       this.pending = null;
     } else {
@@ -293,6 +313,7 @@ export class Daemon {
             accountId: account?.hydrated ? account.id : null,
           });
           this.pending = null;
+          ingestOk = true;
         } catch (err) {
           if (err instanceof AccountConflictError) {
             // The sink knows the binding better than we do (shared mode: the
@@ -310,6 +331,7 @@ export class Daemon {
             // surface an actionable error instead of silently spinning forever.
             this.pending = null;
             pollFailed = true; // back off hard rather than hammering every tick
+            this.authRejected = true; // latch: surfaced in state.json → TUI logs out
             this.log.error(
               `shared-mode auth rejected (${err.message}) — your access token was revoked ` +
                 "or rotated; re-run `ccshare init` to re-authenticate"
@@ -320,8 +342,17 @@ export class Daemon {
             this.log.warn(`ingest failed (will retry next tick): ${(err as Error).message}`);
           }
         }
+      } else {
+        // Nothing new observed — our ledger contribution is already up to date.
+        ingestOk = true;
       }
     }
+
+    // "synced X ago" must reflect a *complete* refresh: a fresh tank reading AND our
+    // contribution landing on the ledger. Only a fully-clean tick advances it, so a
+    // failed poll (429) or ingest (401/unreachable) leaves the footer's age growing
+    // instead of resetting to zero and pretending the account picture is current.
+    if (pollOk && ingestOk) this.lastSyncAt = nowIso;
 
     await atomicWriteJson(
       paths.stateFile,
@@ -329,6 +360,8 @@ export class Daemon {
         accountId: account?.id ?? null,
         tokenExpired,
         accountConflict,
+        authRejected: this.authRejected,
+        lastSyncAt: this.lastSyncAt,
         samples,
         pid: process.pid,
         startedAt: this.startedAt,

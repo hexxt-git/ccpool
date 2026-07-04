@@ -7,6 +7,10 @@ export interface SnapshotInput {
   tokenExpired: boolean;
   /** This machine's Claude account differs from the DB's bound account (§1.5). */
   accountConflict?: boolean;
+  /** The server rejected this daemon's bearer (revoked/rotated) — logged out (§13). */
+  authRejected?: boolean;
+  /** ISO 8601 of the last fully-clean sync (fresh poll + landed ingest), or null. */
+  lastSyncAt?: string | null;
   samples: UsageSample[];
   pid: number;
   startedAt: string;
@@ -17,10 +21,12 @@ export interface SnapshotInput {
 export function buildLocalState(input: SnapshotInput): LocalState {
   return {
     updatedAt: input.now ?? new Date().toISOString(),
+    lastSyncAt: input.lastSyncAt ?? null,
     account: {
       id: input.accountId,
       tokenExpired: input.tokenExpired,
       conflict: input.accountConflict ?? false,
+      authRejected: input.authRejected ?? false,
     },
     samples: input.samples,
     daemon: { pid: input.pid, startedAt: input.startedAt },

@@ -36,6 +36,13 @@ export async function runStatusline(): Promise<void> {
     parts.push(`${short} ${pctLabel(s.pct)}`);
   }
 
+  // A revoked/rotated bearer can't be retried — surface it loudest so the status
+  // bar tells the user to re-init rather than silently showing a stale tank (§13).
+  if (state.account.authRejected) {
+    process.stdout.write(`⚠ ccshare logged out · run \`ccshare init\` · you ${cfg.name}\n`);
+    return;
+  }
+
   const pid = readPid(pidFile);
   const dbDot = pid !== null && isAlive(pid) ? "●" : "○";
   const tank = parts.length > 0 ? parts.join(" · ") : "no caps";

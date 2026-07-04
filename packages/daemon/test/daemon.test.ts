@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  ApiRequestError,
   MemoryStorage,
   StorageIngestSink,
   type IngestMeta,
@@ -104,8 +105,64 @@ describe("Daemon.tick", () => {
 
     expect((await h.storage.getLatestSamples()).find((s) => s.cap === "five_hour")?.pct).toBe(42);
     const state = readState(h.stateFile);
-    expect(state.account).toEqual({ id: "acc-1", tokenExpired: false, conflict: false });
+    expect(state.account).toEqual({
+      id: "acc-1",
+      tokenExpired: false,
+      conflict: false,
+      authRejected: false,
+    });
     expect(state.samples.map((s) => s.cap)).toEqual(["five_hour", "seven_day"]);
+    // A fully-clean tick (fresh poll + landed ingest) stamps the sync heartbeat.
+    expect(state.lastSyncAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it("latches account.authRejected and never marks a clean sync when the sink rejects the bearer (401)", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    // A sink whose bootstrap is fine but whose ingest is always auth-rejected —
+    // the shared-mode server returning 401 for a revoked/rotated token (§13).
+    const rejectingSink: IngestSink = {
+      bootstrap: async () => ({ accountId: null, samples: [] }),
+      ingest: async () => {
+        throw new ApiRequestError(401, "auth", "unknown or revoked token");
+      },
+      close: async () => {},
+    };
+    const daemon = new Daemon({ ...h.deps, sink: rejectingSink });
+    await daemon.tick();
+
+    const state = readState(h.stateFile);
+    expect(state.account.authRejected).toBe(true);
+    // The poll succeeded but the ingest was rejected: not a clean sync, so the
+    // "synced X ago" heartbeat must stay null rather than reset to zero.
+    expect(state.lastSyncAt).toBeNull();
+  });
+
+  it("freezes lastSyncAt when the usage poll fails (429) even as state.json keeps being written", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    let fail = false;
+    const fetchImpl = vi.fn(async () =>
+      fail
+        ? new Response("too many requests", { status: 429 })
+        : new Response(JSON.stringify({ five_hour: { utilization: 42, resets_at: null } }), {
+            status: 200,
+          })
+    );
+    const daemon = new Daemon({ ...h.deps, fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    // Clean tick: poll + ingest both land, so the heartbeat is stamped at NOW.
+    await daemon.tick();
+    const firstSync = readState(h.stateFile).lastSyncAt;
+    expect(firstSync).toBe(new Date(NOW).toISOString());
+
+    // Now the usage endpoint 429s. The tank is stale, so the heartbeat must NOT
+    // advance — even though state.json is rewritten with a fresh `updatedAt`.
+    fail = true;
+    h.advance(60_000);
+    await daemon.tick();
+
+    const state = readState(h.stateFile);
+    expect(state.lastSyncAt).toBe(firstSync);
+    expect(Date.parse(state.updatedAt)).toBeGreaterThan(Date.parse(firstSync!));
   });
 
   it("records a reset when pct drops across ticks", async () => {
@@ -298,10 +355,32 @@ describe("Daemon activity markers", () => {
 });
 
 describe("single-instance lock", () => {
+  /** A pid that is (essentially) guaranteed not to be a running process. */
+  const DEAD_PID = 0x7ffffffe;
+
   it("refuses a second holder while the first is alive", () => {
     const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
     const { pidFile } = daemonPaths(root, "/some/config");
     acquireLock(pidFile); // writes our own (live) pid
     expect(() => acquireLock(pidFile)).toThrow(AlreadyRunningError);
+  });
+
+  it("reclaims a stale lock left by a dead owner (SIGKILL, no release)", () => {
+    const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
+    const { pidFile } = daemonPaths(root, "/some/config");
+    mkdirSync(join(root), { recursive: true });
+    writeFileSync(pidFile, String(DEAD_PID)); // a crashed daemon's leftover
+
+    expect(() => acquireLock(pidFile)).not.toThrow();
+    expect(readFileSync(pidFile, "utf8").trim()).toBe(String(process.pid));
+  });
+
+  it("reclaims an empty/half-written lock file from a crash mid-write", () => {
+    const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
+    const { pidFile } = daemonPaths(root, "/some/config");
+    writeFileSync(pidFile, ""); // opened but never written before the crash
+
+    expect(() => acquireLock(pidFile)).not.toThrow();
+    expect(readFileSync(pidFile, "utf8").trim()).toBe(String(process.pid));
   });
 });

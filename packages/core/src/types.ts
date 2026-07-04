@@ -180,7 +180,15 @@ export interface Config {
 
 /** The local account's latest snapshot, for fast/no-network reads. */
 export interface LocalState {
-  updatedAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601 — when this snapshot was written (every tick)
+  /**
+   * ISO 8601 of the last tick that fully synced — a successful usage poll AND a
+   * successful ledger ingest (or nothing new to send). Unlike `updatedAt`, which is
+   * bumped on every tick regardless of outcome, this only advances on a clean tick,
+   * so "synced X ago" keeps growing while polls (429) or ingests (401/unreachable)
+   * fail instead of falsely resetting to zero. Null until the first clean sync.
+   */
+  lastSyncAt?: string | null;
   account: {
     id: string | null; // oauthAccount uuid/email, never the person
     tokenExpired: boolean;
@@ -190,6 +198,13 @@ export interface LocalState {
      * views surface it — a mismatch would interleave two different tanks (§1.5).
      */
     conflict?: boolean;
+    /**
+     * True when the server rejected this daemon's bearer (unknown/revoked/rotated
+     * token). The daemon's token is fixed at startup, so retrying can't fix it —
+     * this latches until re-auth. Readers treat it as a logged-out state and route
+     * the user back to `init` (§13).
+     */
+    authRejected?: boolean;
   };
   samples: UsageSample[]; // latest per cap from this machine's poll
   daemon: {

@@ -21,8 +21,8 @@ const MESSAGES: { label: string; url?: string }[] = [
   { label: "↻ share access, don't lose it" },
   { label: "✎ open an issue on GitHub", url: GITHUB_URL },
 ];
-const SHORTCUTS = "⇥ switch · ↑↓ scroll · r refresh · q quit";
-const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · c re-init · q quit";
+const SHORTCUTS = "⇥ switch · ↑↓ scroll · q quit";
+const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · r re-init · q quit";
 
 /**
  * Live shared view. Polls the DB / state.json every 2s and re-renders the clock
@@ -33,11 +33,14 @@ export function App({
   cfg,
   viewSource,
   onConfigure,
+  onLoggedOut,
 }: {
   cfg: Config;
   viewSource: ViewSource;
-  /** When set, `c` opens the config screen and the footer advertises it. */
+  /** When set, `r` opens the re-init screen and the footer advertises it. */
   onConfigure?: () => void;
+  /** The server rejected our bearer (revoked/rotated) — hand back to re-init (§13). */
+  onLoggedOut?: () => void;
 }): React.ReactElement {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
@@ -52,12 +55,18 @@ export function App({
   const refresh = useCallback(async () => {
     try {
       const [vm, freshCfg] = await Promise.all([gatherView(cfg, viewSource), loadConfig()]);
+      // A rejected bearer isn't a view we can render — bail to re-init before we
+      // paint a misleading all-`unknown` screen. Root logs out and swaps screens.
+      if (vm.loggedOut && onLoggedOut) {
+        onLoggedOut();
+        return;
+      }
       setModel(toDesignModel(vm, freshCfg?.name ?? cfg.name));
       setErr(null);
     } catch (e) {
       setErr((e as Error).message);
     }
-  }, [cfg, viewSource]);
+  }, [cfg, viewSource, onLoggedOut]);
 
   useEffect(() => {
     void refresh();
@@ -95,8 +104,7 @@ export function App({
   useInput(
     (input, key) => {
       if (input === "q" || key.escape) exit();
-      else if (input === "c" && onConfigure) onConfigure();
-      else if (input === "r") void refresh();
+      else if (input === "r" && onConfigure) onConfigure();
       else if (key.tab) {
         // tab cycles designs forward; shift+tab reverses
         setIdx((i) => (i + (key.shift ? n - 1 : 1)) % n);

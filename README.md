@@ -146,9 +146,9 @@ From now on your live usage flows into the shared DB under your current name.
 
 ```bash
 ccshare            # opens the TUI: onboarding if unconfigured, else the live view
-                   #   press c to configure (name, backend, daemon)
+                   #   press r to re-initialize (name, backend, daemon)
 ccshare tui        # jump straight to the live shared view (alias: ccshare live)
-                   #   Tab switch view (⇧Tab reverses) · ↑↓ scroll · r refresh · q quit
+                   #   Tab switch view (⇧Tab reverses) · ↑↓ scroll · r re-init · q quit
 ccshare status     # one-shot snapshot to stdout
 ```
 
