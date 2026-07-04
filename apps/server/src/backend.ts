@@ -1,16 +1,10 @@
-import { LibsqlStorage } from "@ccshare/storage-libsql";
-import { PostgresStorage } from "@ccshare/storage-postgres";
+import { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { PostgresDatabase } from "@ccshare/storage-postgres";
 import type { ServerDeps } from "./deps.js";
-import { PgRegistry } from "./registry-pg.js";
-import { LibsqlRegistry } from "./registry-libsql.js";
-import { StorageTenantProvider } from "./tenants.js";
+import { TenantCache } from "./tenants.js";
 
 /** The databases the server can run on. Both use the same relational group_id model. */
 export type ServerDriver = "postgres" | "libsql";
-
-/** Pool sizing for a group's Postgres connection (many tenants, one small pool each). */
-const TENANT_POOL_MAX = 2;
-const TENANT_IDLE_SECS = 60;
 
 export interface ServerBackendConfig {
   driver: ServerDriver;
@@ -18,6 +12,8 @@ export interface ServerBackendConfig {
   url: string;
   /** libsql only: auth token for a remote Turso database. */
   authToken?: string;
+  /** postgres only: size of the ONE process-wide pool. */
+  pgPoolMax?: number;
 }
 
 /**
@@ -39,32 +35,24 @@ export function resolveServerBackend(env = process.env): ServerBackendConfig {
       : url.startsWith("postgres://") || url.startsWith("postgresql://")
         ? "postgres"
         : "libsql";
-  return { driver, url, authToken: env.CCSHARE_DB_AUTH_TOKEN?.trim() || undefined };
+  const poolMax = Number(env.CCSHARE_PG_POOL_MAX);
+  return {
+    driver,
+    url,
+    authToken: env.CCSHARE_DB_AUTH_TOKEN?.trim() || undefined,
+    ...(Number.isFinite(poolMax) && poolMax > 0 ? { pgPoolMax: poolMax } : {}),
+  };
 }
 
 /**
- * Compose the server's two dependencies for a driver. The registry and the
- * per-group ledgers share ONE physical database; the tenant provider only differs
- * per driver in how a group id becomes a group-scoped `Storage`.
+ * Compose the server's dependencies: ONE `Database` (one pool/client for the
+ * whole process — registry and every group's ledger) and a connection-free
+ * tenant cache over it.
  */
 export function makeServerDeps(cfg: ServerBackendConfig): ServerDeps {
-  if (cfg.driver === "postgres") {
-    return {
-      registry: new PgRegistry(cfg.url),
-      tenants: new StorageTenantProvider(
-        (groupId) =>
-          new PostgresStorage(cfg.url, {
-            groupId,
-            max: TENANT_POOL_MAX,
-            idleTimeoutSecs: TENANT_IDLE_SECS,
-          })
-      ),
-    };
-  }
-  return {
-    registry: new LibsqlRegistry(cfg.url, cfg.authToken),
-    tenants: new StorageTenantProvider(
-      (groupId) => new LibsqlStorage(cfg.url, { groupId, authToken: cfg.authToken })
-    ),
-  };
+  const db =
+    cfg.driver === "postgres"
+      ? new PostgresDatabase(cfg.url, { max: cfg.pgPoolMax })
+      : new LibsqlDatabase(cfg.url, { authToken: cfg.authToken });
+  return { db, registry: db.registry, tenants: new TenantCache(db) };
 }

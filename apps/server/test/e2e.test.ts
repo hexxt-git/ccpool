@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
 import { CcshareClient, HttpIngestSink, HttpViewSource } from "@ccshare/core";
 import { Daemon } from "@ccshare/daemon";
-import { makeApp, MemoryRegistry, MemoryTenantProvider } from "../src/app.js";
+import { makeApp, makeMemoryDeps } from "../src/app.js";
 
 /**
- * The full shared-hosting loop over a real socket, zero infrastructure: a
+ * The full client-to-server loop over a real socket, zero infrastructure: a
  * daemon observes a fixture transcript + a stubbed usage poll, writes through
  * HttpIngestSink to the served app (memory deps), and HttpViewSource reads the
  * attributed view back — proving daemon → server → view end to end.
@@ -21,7 +21,7 @@ let server: ServerType;
 let baseUrl: string;
 
 beforeAll(async () => {
-  const app = makeApp({ registry: new MemoryRegistry(), tenants: new MemoryTenantProvider() });
+  const app = makeApp(makeMemoryDeps());
   await new Promise<void>((resolve) => {
     server = serve({ fetch: app.fetch, port: 0 }, (info) => {
       baseUrl = `http://127.0.0.1:${info.port}`;
@@ -72,7 +72,7 @@ function writeTranscript(configDir: string): void {
   );
 }
 
-describe("shared hosting end to end", () => {
+describe("client to server end to end", () => {
   it("daemon tick → POST /v1/ingest → GET /v1/view shows the member's usage", async () => {
     const auth = await new CcshareClient(baseUrl).createGroup({
       accountId: ACCOUNT,

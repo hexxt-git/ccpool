@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import type { AuthResponse, SharedView } from "@ccshare/core";
-import { makeApp, MemoryRegistry, MemoryTenantProvider } from "../src/app.js";
+import { makeApp, makeMemoryDeps } from "../src/app.js";
 
 /**
  * The whole HTTP surface against in-memory deps — this is why ServerDeps is an
@@ -13,10 +13,7 @@ const ACCOUNT = "acc-uuid-1";
 let app: Hono<never>;
 
 beforeEach(() => {
-  app = makeApp({
-    registry: new MemoryRegistry(),
-    tenants: new MemoryTenantProvider(),
-  }) as unknown as Hono<never>;
+  app = makeApp(makeMemoryDeps()) as unknown as Hono<never>;
 });
 
 const json = (body: unknown): RequestInit => ({
@@ -122,6 +119,53 @@ describe("group lifecycle", () => {
       }),
     });
     expect(longName.status).toBe(400);
+  });
+});
+
+describe("atomic signup transactions", () => {
+  it("concurrent creates for one account: one 201, one 409, and the loser's token is dead", async () => {
+    const make = () =>
+      app.request("/v1/groups", {
+        ...json({
+          accountId: ACCOUNT,
+          groupPassword: "group-pass-1",
+          memberName: "sam",
+          memberPassword: "sam-pass-1",
+        }),
+      });
+    // Sequential requests model the race past the friendly pre-check: the
+    // second create hits the composed op's uniqueness arbiter.
+    const first = await make();
+    const second = await make();
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const loser = first.status === 409 ? first : second;
+    expect((await loser.json()).code).toBe("conflict");
+
+    // Only the winner's member exists, and only its token works.
+    const winner = (await (first.status === 201 ? first : second).json()) as AuthResponse;
+    const view = await app.request("/v1/view", { headers: bearer(winner.token) });
+    expect(view.status).toBe(200);
+    expect(((await view.json()) as SharedView).users.map((u) => u.name)).toEqual(["sam"]);
+  });
+
+  it("a failed duplicate-name join leaves no token behind", async () => {
+    const auth = await createGroup("sam");
+    const res = await app.request("/v1/groups/join", {
+      ...json({
+        accountId: ACCOUNT,
+        groupPassword: "group-pass-1",
+        memberName: "sam",
+        memberPassword: "not-sams-pass",
+      }),
+    });
+    expect(res.status).toBe(401);
+
+    // The refused join must not have written anything: same roster, and the
+    // winner's credentials still work.
+    const view = await app.request("/v1/view", { headers: bearer(auth.token) });
+    expect(((await view.json()) as SharedView).users.map((u) => u.name)).toEqual(["sam"]);
   });
 });
 

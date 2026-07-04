@@ -84,12 +84,6 @@ importers:
       '@ccshare/daemon':
         specifier: workspace:*
         version: link:../../packages/daemon
-      '@ccshare/storage-libsql':
-        specifier: workspace:*
-        version: link:../../packages/storage-libsql
-      '@ccshare/storage-postgres':
-        specifier: workspace:*
-        version: link:../../packages/storage-postgres
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -130,15 +124,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.27)
-      '@libsql/client':
-        specifier: ^0.14.0
-        version: 0.14.0
       hono:
         specifier: ^4.6.14
         version: 4.12.27
-      postgres:
-        specifier: ^3.4.5
-        version: 3.4.9
     devDependencies:
       '@ccshare/daemon':
         specifier: workspace:*
@@ -146,6 +134,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.0
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.9
       tsx:
         specifier: ^4.19.2
         version: 4.22.4

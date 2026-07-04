@@ -20,8 +20,8 @@ describe("server on libSQL (file:)", () => {
   let deps: ServerDeps;
 
   afterAll(async () => {
-    await deps?.registry.close();
     await deps?.tenants.close();
+    await deps?.db.close();
   });
 
   it("resolves libsql from a file: DATABASE_URL", () => {
@@ -31,7 +31,7 @@ describe("server on libSQL (file:)", () => {
 
   it("creates two groups, ingests, and isolates their ledgers by group_id", async () => {
     deps = makeServerDeps({ driver: "libsql", url });
-    await deps.registry.ensure();
+    await deps.db.init();
     const app = makeApp(deps);
 
     const mk = async (account: string, name: string): Promise<AuthResponse> => {

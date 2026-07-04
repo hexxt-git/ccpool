@@ -16,17 +16,18 @@ try {
 }
 const port = Number(process.env.PORT ?? 8787);
 
-const { registry, tenants } = makeServerDeps(backend);
+const deps = makeServerDeps(backend);
 
 /**
- * Bring the registry schema up. In dev we keep retrying so the server survives
- * the DB not being up yet (and recovers the moment it comes online); in prod a
- * failure is fatal (fail fast behind the process manager).
+ * Bring the schema up (ledger + registry tables, one idempotent init). In dev we
+ * keep retrying so the server survives the DB not being up yet (and recovers the
+ * moment it comes online); in prod a failure is fatal (fail fast behind the
+ * process manager).
  */
-async function ensureRegistry(): Promise<void> {
+async function ensureDatabase(): Promise<void> {
   for (;;) {
     try {
-      await registry.ensure();
+      await deps.db.init();
       return;
     } catch {
       console.warn(`waiting for the ${backend.driver} database at ${backend.url} (retrying in 3s)`);
@@ -34,9 +35,9 @@ async function ensureRegistry(): Promise<void> {
     }
   }
 }
-await ensureRegistry();
+await ensureDatabase();
 
-const app = makeApp({ registry, tenants });
+const app = makeApp(deps);
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`ccshare server (${backend.driver}) listening on :${info.port}`);
 });
@@ -45,7 +46,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {
     console.log(`received ${sig}, shutting down`);
     server.close(() => {
-      void Promise.all([registry.close(), tenants.close()]).then(() => process.exit(0));
+      void Promise.all([deps.tenants.close(), deps.db.close()]).then(() => process.exit(0));
     });
   });
 }

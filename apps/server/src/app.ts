@@ -1,11 +1,16 @@
 import { Hono, type Context } from "hono";
-import { AccountConflictError, type ApiError, type ApiErrorCode } from "@ccshare/core";
+import {
+  AccountConflictError,
+  RegistryConflictError,
+  type ApiError,
+  type ApiErrorCode,
+} from "@ccshare/core";
 import { FailureDamper, hashPassword, hashToken, mintToken, verifyPassword } from "./auth.js";
 import type { GroupRow, MemberRow, ServerDeps } from "./deps.js";
 import { parseCreateGroup, parseIngest, parseJoinGroup, parseLogin } from "./validate.js";
 
 export type { ServerDeps } from "./deps.js";
-export { MemoryRegistry, MemoryTenantProvider } from "./memory.js";
+export { makeMemoryDeps } from "./memory-deps.js";
 
 /** Ingest bodies above this are refused outright (a tick is a few KB). */
 const MAX_INGEST_BYTES = 1024 * 1024;
@@ -54,11 +59,14 @@ async function readCappedText(req: Request, max: number): Promise<string | null>
 export function makeApp(deps: ServerDeps): Hono<Vars> {
   const { registry, tenants } = deps;
   const app = new Hono<Vars>();
-  app.use("*", async (c, next) => {
-    const delay = Math.random() * 300 + 200;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    await next();
-  });
+
+  // Dev server testing
+  // app.use("*", async (c, next) => {
+  //   const delay = Math.random() * 300 + 200;
+  //   await new Promise((resolve) => setTimeout(resolve, delay));
+  //   await next();
+  // });
+
   const damper = new FailureDamper();
   const lastTouch = new Map<string, number>();
 
@@ -122,29 +130,27 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
       return err(c, 429, "rate-limited", "too many attempts — wait a moment");
     }
 
+    // Friendly pre-check; the transaction below is the real race arbiter.
     if (await registry.getGroupByAccount(body.accountId)) {
       return err(c, 409, "conflict", "a group for this Claude account already exists — join it");
     }
-    let group: GroupRow;
+    const { token, tokenHash } = mintToken();
     try {
-      group = await registry.createGroup(body.accountId, await hashPassword(body.groupPassword));
-    } catch {
-      // lost a creation race — the unique accountId constraint is the arbiter
-      return err(c, 409, "conflict", "a group for this Claude account already exists — join it");
-    }
-    try {
-      await tenants.provision(group);
-      const member = await registry.createMember(
-        group.id,
-        body.memberName,
-        await hashPassword(body.memberPassword)
-      );
-      await (await tenants.get(group)).upsertUser(member.name);
-      const { token, tokenHash } = mintToken();
-      await registry.insertToken(tokenHash, member.id);
+      // ONE transaction: group + provisioned ledger + first member + token —
+      // a failure anywhere leaves nothing behind (no compensation needed).
+      const { group, member } = await registry.createGroupWithMember({
+        accountId: body.accountId,
+        groupPasswordHash: await hashPassword(body.groupPassword),
+        memberName: body.memberName,
+        memberPasswordHash: await hashPassword(body.memberPassword),
+        tokenHash,
+      });
       return c.json({ token, groupId: group.id, memberName: member.name }, 201);
     } catch (e) {
-      await registry.deleteGroup(group.id).catch(() => {});
+      if (e instanceof RegistryConflictError) {
+        // lost the creation race — the unique accountId constraint is the arbiter
+        return err(c, 409, "conflict", "a group for this Claude account already exists — join it");
+      }
       return err(c, 500, "invalid", `could not provision the group: ${(e as Error).message}`);
     }
   });
@@ -165,6 +171,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
       return err(c, 401, "auth", "wrong group password");
     }
 
+    const { token, tokenHash } = mintToken();
     let member = await registry.getMember(group.id, body.memberName);
     if (member) {
       // The anti-impersonation check: an existing name is only re-joinable by
@@ -173,17 +180,29 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
         damper.recordFailure(key);
         return err(c, 401, "auth", `"${body.memberName}" exists and this isn't its password`);
       }
+      await registry.insertToken(tokenHash, member.id);
     } else {
-      member = await registry.createMember(
-        group.id,
-        body.memberName,
-        await hashPassword(body.memberPassword)
-      );
-      await (await tenants.get(group)).upsertUser(member.name);
+      try {
+        // ONE transaction: member + roster row + change-token bump + token.
+        member = await registry.addMemberWithToken(
+          group.id,
+          body.memberName,
+          await hashPassword(body.memberPassword),
+          tokenHash
+        );
+      } catch (e) {
+        if (!(e instanceof RegistryConflictError)) throw e;
+        // Lost a same-name race — the name exists now, so apply the
+        // impersonation guard against the row that won.
+        member = await registry.getMember(group.id, body.memberName);
+        if (!member || !(await verifyPassword(body.memberPassword, member.passwordHash))) {
+          damper.recordFailure(key);
+          return err(c, 401, "auth", `"${body.memberName}" exists and this isn't its password`);
+        }
+        await registry.insertToken(tokenHash, member.id);
+      }
     }
     damper.recordSuccess(key);
-    const { token, tokenHash } = mintToken();
-    await registry.insertToken(tokenHash, member.id);
     return c.json({ token, groupId: group.id, memberName: member.name }, 200);
   });
 

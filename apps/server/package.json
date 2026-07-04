@@ -22,13 +22,12 @@
     "@ccshare/storage-libsql": "workspace:*",
     "@ccshare/storage-postgres": "workspace:*",
     "@hono/node-server": "^1.13.7",
-    "@libsql/client": "^0.14.0",
-    "hono": "^4.6.14",
-    "postgres": "^3.4.5"
+    "hono": "^4.6.14"
   },
   "devDependencies": {
     "@ccshare/daemon": "workspace:*",
     "@types/node": "^22.0.0",
+    "postgres": "^3.4.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

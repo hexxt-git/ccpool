@@ -25,8 +25,8 @@ if (url) {
     let deps: ServerDeps;
 
     afterAll(async () => {
-      await deps?.registry.close();
       await deps?.tenants.close();
+      await deps?.db.close();
       const admin = postgres(url);
       await admin.unsafe(`DROP SCHEMA IF EXISTS "${regSchema}" CASCADE`);
       await admin.end();
@@ -38,7 +38,7 @@ if (url) {
       await admin.end();
 
       deps = makeServerDeps({ driver: "postgres", url: withSearchPath(url) });
-      await deps.registry.ensure();
+      await deps.db.init();
       const app = makeApp(deps);
 
       const account = `acc-${Date.now()}`;
