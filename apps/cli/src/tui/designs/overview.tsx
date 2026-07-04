@@ -53,7 +53,9 @@ export function overview(
             {" "}
             {lpad(pct(c.pct), 4)}
           </Text>
-          <Text color={P.dim}>{c.resets ? ` resets in ${c.resets}` : ""}</Text>
+          <Text color={P.dim}>
+            {c.resets ? (c.resets === "due" ? " reset is due" : ` resets in ${c.resets}`) : ""}
+          </Text>
         </Box>
       ))}
       <Box height={1} />
