@@ -1,4 +1,11 @@
-import type { SharedView, UsageMarker } from "../types.js";
+import type {
+  MessageUsage,
+  ResetEvent,
+  SharedView,
+  UsageMarker,
+  UsageSample,
+  User,
+} from "../types.js";
 import type { Storage } from "../storage/storage.js";
 import { attributeShares, CAP_WINDOW_MS } from "./shares.js";
 import { summarizeMembers } from "./members.js";
@@ -23,12 +30,56 @@ export function viewCacheKey(changeToken: string, now: number): string {
   return `${changeToken}.${Math.floor(now / 60_000)}`;
 }
 
+/** Everything one view assembly consumes — the widest cap window of raw rows. */
+export interface LedgerRows {
+  latest: UsageSample[];
+  samplesSince: UsageSample[];
+  messagesSince: MessageUsage[];
+  resetsSince: ResetEvent[];
+  markersSince: UsageMarker[];
+  users: User[];
+}
+
 /**
- * Assemble the shared picture from raw rows: the 7-day trajectory feeds
+ * Assemble the shared picture from raw rows, pure: the 7-day trajectory feeds
  * `attributeShares`, messages feed the member rollup, and the roster rides
- * along. This is the ONE heavy read path — everything above it (CLI self-host,
- * server) caches the result under {@link viewCacheKey} and only calls back in
- * when the key moves.
+ * along. Callers fetch {@link LedgerRows} however they like — a full storage
+ * scan ({@link computeSharedView}) or the server's in-memory `LedgerWindow`.
+ */
+export function assembleSharedView(rows: LedgerRows, now = Date.now()): SharedView {
+  // Merge latest samples with samplesSince (deduplicating by cap + capturedAt)
+  // to ensure that a cap with a current reading (even if older than the window)
+  // is always attributed (falling back to unknown) rather than skipped entirely.
+  const allSamples = [...rows.samplesSince];
+  const seen = new Set(rows.samplesSince.map((s) => `${s.cap}:${s.capturedAt}`));
+  for (const s of rows.latest) {
+    const key = `${s.cap}:${s.capturedAt}`;
+    if (!seen.has(key)) {
+      allSamples.push(s);
+      seen.add(key);
+    }
+  }
+
+  return {
+    generatedAt: new Date(now).toISOString(),
+    samples: rows.latest,
+    shares: attributeShares(
+      allSamples,
+      rows.messagesSince,
+      now,
+      rows.resetsSince,
+      rows.markersSince
+    ),
+    members: summarizeMembers(rows.messagesSince),
+    users: rows.users,
+  };
+}
+
+/**
+ * Assemble the shared picture straight from storage: one full scan of the
+ * widest cap window. This is the heavy read path — the server only takes it on
+ * a `LedgerWindow` hydration (or when composed without one, as in tests and
+ * one-shot views); steady-state recomputes run over the in-memory window.
  */
 export async function computeSharedView(storage: Storage, now = Date.now()): Promise<SharedView> {
   // Pull enough history to cover the widest window, then attribute deltas.
@@ -50,24 +101,8 @@ export async function computeSharedView(storage: Storage, now = Date.now()): Pro
     /* no markers table — attribute without markers */
   }
 
-  // Merge latest samples with samplesSince (deduplicating by cap + capturedAt)
-  // to ensure that a cap with a current reading (even if older than the window)
-  // is always attributed (falling back to unknown) rather than skipped entirely.
-  const allSamples = [...samplesSince];
-  const seen = new Set(samplesSince.map((s) => `${s.cap}:${s.capturedAt}`));
-  for (const s of latest) {
-    const key = `${s.cap}:${s.capturedAt}`;
-    if (!seen.has(key)) {
-      allSamples.push(s);
-      seen.add(key);
-    }
-  }
-
-  return {
-    generatedAt: new Date(now).toISOString(),
-    samples: latest,
-    shares: attributeShares(allSamples, messagesSince, now, resetsSince, markersSince),
-    members: summarizeMembers(messagesSince),
-    users,
-  };
+  return assembleSharedView(
+    { latest, samplesSince, messagesSince, resetsSince, markersSince, users },
+    now
+  );
 }

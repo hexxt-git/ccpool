@@ -93,7 +93,7 @@ export class CcshareClient {
   }
 }
 
-/** The daemon's sink in shared mode: one POST per tick, bearer-authenticated. */
+/** The daemon's sink: one POST per tick, bearer-authenticated. */
 export class HttpIngestSink implements IngestSink {
   private readonly fetchImpl: typeof fetch;
 
@@ -136,7 +136,7 @@ export class HttpIngestSink implements IngestSink {
 }
 
 /**
- * The view reader in shared mode. Sends `If-None-Match` with the last ETag so
+ * The view reader. Sends `If-None-Match` with the last ETag so
  * the steady-state 2s poll is a bodyless 304; the server only recomputes (and
  * re-sends the few-KB view) when the ledger actually changed.
  */

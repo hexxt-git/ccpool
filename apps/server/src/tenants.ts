@@ -1,4 +1,4 @@
-import { StorageIngestSink, StorageViewSource, type Database } from "@ccshare/core";
+import { LedgerWindow, StorageIngestSink, StorageViewSource, type Database } from "@ccshare/core";
 import type { GroupRow, Tenant, TenantProvider } from "./deps.js";
 
 /**
@@ -56,10 +56,14 @@ export class TenantCache implements TenantProvider {
       return hit;
     }
     const storage = this.db.forGroup(group.id);
+    // One in-memory ledger mirror per live tenant, shared by its sink and view
+    // source: hydrated from storage once, appended by ingest ever after — the
+    // steady-state view recompute reads no ledger rows from the database.
+    const window = new LedgerWindow(storage);
     const entry: TenantEntry = {
       tenant: {
-        sink: new StorageIngestSink(storage),
-        view: new StorageViewSource(storage),
+        sink: new StorageIngestSink(storage, { window }),
+        view: new StorageViewSource(storage, { window }),
       },
     };
     this.tenants.set(group.id, entry);

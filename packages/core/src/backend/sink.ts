@@ -18,7 +18,7 @@ export interface IngestMeta {
 
 /**
  * Where a daemon's observations go — ONE call per tick, whatever is behind it
- * (a storage adapter in self-host mode, `POST /v1/ingest` in shared mode).
+ * (a storage adapter on the server, `POST /v1/ingest` from the CLI).
  * Implementations reject a tick whose account doesn't match the ledger's
  * binding with {@link AccountConflictError} (§1.5) and write nothing.
  */

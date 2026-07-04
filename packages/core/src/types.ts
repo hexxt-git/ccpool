@@ -125,7 +125,7 @@ export interface MemberSummary {
 
 /**
  * The compact, precomputed shared picture — everything `status`/`tui` need from
- * the ledger, and the only thing that crosses the network in shared mode (a few
+ * the ledger, and the only thing that crosses the network (a few
  * KB, never raw rows). Assembled by `computeSharedView`, cached by change token.
  */
 export interface SharedView {

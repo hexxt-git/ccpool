@@ -13,7 +13,8 @@ export { attributeShares, CAP_WINDOW_MS } from "./state/shares.js";
 export { summarizeMembers, isActive, ACTIVE_WINDOW_MS } from "./state/members.js";
 export type { MemberSummary } from "./state/members.js";
 export { bar, countdown, pctLabel, CAP_LABEL } from "./state/format.js";
-export { computeSharedView, viewCacheKey, RETENTION_MS } from "./state/view.js";
+export { assembleSharedView, computeSharedView, viewCacheKey, RETENTION_MS } from "./state/view.js";
+export type { LedgerRows } from "./state/view.js";
 
 // HTTP client (talks to apps/server over the wire contract below)
 export { ApiRequestError, CcshareClient, HttpIngestSink, HttpViewSource } from "./remote/client.js";
@@ -38,6 +39,7 @@ export type { IngestSink, IngestBootstrap, IngestMeta } from "./backend/sink.js"
 export type { ViewSource } from "./backend/view-source.js";
 export { StorageIngestSink, StorageViewSource } from "./backend/local.js";
 export type { StorageIngestSinkOptions } from "./backend/local.js";
+export { LedgerWindow } from "./backend/window.js";
 
 // identity
 export { resolveConfigDir, projectsDir, globalConfigPath } from "./identity/paths.js";

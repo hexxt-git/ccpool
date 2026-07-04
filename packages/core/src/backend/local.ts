@@ -1,7 +1,13 @@
 import type { SharedView, TickBatch } from "../types.js";
 import type { Storage } from "../storage/storage.js";
 import { isEmptyBatch, SCHEMA_VERSION } from "../storage/storage.js";
-import { computeSharedView, RETENTION_MS, viewCacheKey } from "../state/view.js";
+import {
+  assembleSharedView,
+  computeSharedView,
+  RETENTION_MS,
+  viewCacheKey,
+} from "../state/view.js";
+import type { LedgerWindow } from "./window.js";
 import {
   AccountConflictError,
   type IngestBootstrap,
@@ -18,11 +24,17 @@ export interface StorageIngestSinkOptions {
   retentionMs?: number;
   pruneIntervalMs?: number;
   now?: () => number;
+  /**
+   * The group's in-memory ledger mirror (server-side): every committed batch
+   * is appended to it and every prune mirrored, so the paired view source
+   * recomputes without re-reading the window from storage.
+   */
+  window?: LedgerWindow;
 }
 
 /**
- * The direct-storage {@link IngestSink}: what a self-host daemon writes through,
- * and what the server composes per group behind `POST /v1/ingest`. One
+ * The direct-storage {@link IngestSink}: what the server composes per group
+ * behind `POST /v1/ingest`. One
  * `recordBatch` transaction per tick, plus a throttled retention prune.
  */
 export class StorageIngestSink implements IngestSink {
@@ -33,6 +45,7 @@ export class StorageIngestSink implements IngestSink {
   private readonly retentionMs: number;
   private readonly pruneIntervalMs: number;
   private readonly now: () => number;
+  private readonly window: LedgerWindow | undefined;
 
   constructor(
     private readonly storage: Storage,
@@ -41,6 +54,7 @@ export class StorageIngestSink implements IngestSink {
     this.retentionMs = opts.retentionMs ?? RETENTION_MS;
     this.pruneIntervalMs = opts.pruneIntervalMs ?? DEFAULT_PRUNE_INTERVAL_MS;
     this.now = opts.now ?? Date.now;
+    this.window = opts.window;
     // Start the retention clock at construction, not the epoch. A sink is rebuilt
     // on every (re)open — a daemon restart, or the server reopening an
     // LRU-evicted tenant — and a 0 here would make the very first ingest prune
@@ -80,12 +94,19 @@ export class StorageIngestSink implements IngestSink {
     ) {
       throw new AccountConflictError(this.boundAccountId);
     }
-    if (!isEmptyBatch(batch)) await this.storage.recordBatch(batch);
+    if (!isEmptyBatch(batch)) {
+      await this.storage.recordBatch(batch);
+      // Mirror the committed rows into the in-memory window (never before the
+      // commit — a failed batch is retained and re-sent by the daemon).
+      this.window?.append(batch);
+    }
 
     const now = this.now();
     if (now - this.lastPruneMs >= this.pruneIntervalMs) {
       this.lastPruneMs = now;
-      await this.storage.prune(new Date(now - this.retentionMs).toISOString());
+      const before = new Date(now - this.retentionMs).toISOString();
+      await this.storage.prune(before);
+      this.window?.applyPrune(before);
     }
   }
 
@@ -102,8 +123,14 @@ export class StorageIngestSink implements IngestSink {
  */
 export class StorageViewSource implements ViewSource {
   private cache: { key: string; view: SharedView } | null = null;
+  private readonly window: LedgerWindow | undefined;
 
-  constructor(private readonly storage: Storage) {}
+  constructor(
+    private readonly storage: Storage,
+    opts: { window?: LedgerWindow } = {}
+  ) {
+    this.window = opts.window;
+  }
 
   /** The key the current view was computed under (the server's ETag). */
   async currentKey(now = Date.now()): Promise<string> {
@@ -113,7 +140,14 @@ export class StorageViewSource implements ViewSource {
   async fetchView(now = Date.now()): Promise<SharedView> {
     const key = await this.currentKey(now);
     if (this.cache?.key === key) return this.cache.view;
-    const view = await computeSharedView(this.storage, now);
+    // With a window, a recompute reads no ledger rows from storage (the mirror
+    // holds them; only the tiny roster is fetched) — without one, full scan.
+    const view = this.window
+      ? assembleSharedView(
+          { ...(await this.window.rows(now)), users: await this.storage.getUsers() },
+          now
+        )
+      : await computeSharedView(this.storage, now);
     this.cache = { key, view };
     return view;
   }
