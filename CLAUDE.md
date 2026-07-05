@@ -57,8 +57,10 @@ Monorepo (pnpm workspaces + turbo). The meaningful packages:
   wire contract, identity/credentials, the usage poller, reset detection, the JSONL
   reader, the attribution algorithm, view assembly, and shared formatters. No UI,
   no process.
-- `packages/storage-libsql` — server-side libSQL adapter (`file:` and `libsql://`).
-- `packages/storage-postgres` — server-side Postgres adapter.
+- `packages/storage-libsql` — server-side libSQL backend (`file:` and `libsql://`):
+  `LibsqlDatabase` (the ONE client, DDL, the registry) + the `LibsqlStorage` facade.
+- `packages/storage-postgres` — server-side Postgres backend: `PostgresDatabase`
+  (the ONE pool, DDL, the registry) + the `PostgresStorage` facade.
 - `packages/daemon` — the long-running observer (poll loop, lifecycle, `spawnDetached`).
 - `apps/cli` — Commander + Ink CLI (the composition root). **HTTP client only — it
   never opens a database.**
@@ -96,17 +98,27 @@ There is **no IPC**. The contract is files + the server API:
    backend (everyone-included), fall back to `state.json`, then a one-shot live
    poll. `statusline` reads `state.json` only.
 
-### The read path is watermark-cached (keep it that way)
+### The read path is watermark-cached and window-mirrored (keep it that way)
 
 The TUI refreshes every 2s but the ledger changes at most ~1/min, so the heavy work
 hides behind a change token: every write bumps `ccshare_meta.writeSeq` in the same
 transaction, and `viewCacheKey(token, now)` (`packages/core/src/state/view.ts`) adds
 a 60s time bucket (attribution windows slide with `now`, so an idle ledger must
-still drift). `StorageViewSource` re-runs `computeSharedView` (the 7-day window
-queries + `attributeShares`) only when the key moves; the server uses the same key
-as the `GET /v1/view` ETag, so a steady-state poll is a bodyless 304 backed by one
-single-row SELECT. Never put raw-row queries back on the per-refresh path, and never
-ship raw rows over the network — `SharedView` is the wire unit.
+still drift). `StorageViewSource` recomputes only when the key moves; the server
+uses the same key as the `GET /v1/view` ETag, so a steady-state poll is a bodyless
+304 backed by one single-row SELECT.
+
+The recompute itself runs over the group's **`LedgerWindow`**
+(`packages/core/src/backend/window.ts`): an in-memory mirror of the 7-day raw-row
+window, hydrated from storage ONCE (lazily, on the first view read) and appended to
+by the ingest sink after each `recordBatch` commit — so a steady-state recompute
+reads no ledger rows from the database (just the roster). Its mirror rules are
+load-bearing, don't "simplify" them: insert-if-absent per natural key (the DB keeps
+a retried tick's first write, so the window must too), `idle` drops appends /
+`hydrating` buffers them, and trimming happens only when the sink's prune deletes
+rows — never on a clock. `packages/core/test/window.test.ts` pins windowed ==
+full-scan; keep it green. Never put raw-row queries back on the per-refresh path,
+and never ship raw rows over the network — `SharedView` is the wire unit.
 
 ### Strict boundary: `Storage`
 
@@ -118,12 +130,31 @@ at construction, injected as a `group_id` column on every table), so one shared
 database backs every group. A shared contract suite
 (`packages/core/test/storage-contract.ts`) runs against memory, libSQL, and Postgres
 — including a two-groups-in-one-DB isolation case — proving swappability, `group_id`
-isolation, and the group-setup rules. The server picks the driver in
-`apps/server/src/backend.ts` (`makeServerDeps`) and composes a group-scoped `Storage`
-per group via `StorageTenantProvider`; the server-owned registry tables
-(groups/members/tokens, in `apps/server/src/registry-pg.ts` / `registry-libsql.ts`)
-live OUTSIDE this interface, in the same database. Ledger rows carry a `group_id`
-referencing `groups(id)`.
+isolation, and the group-setup rules.
+
+**One `Database`, one pool per process.** Core also owns the `Database` interface
+(`packages/core/src/storage/database.ts`): each storage package implements it once
+per process from `DATABASE_URL` — it owns THE single Postgres pool
+(`CCSHARE_PG_POOL_MAX`, default 10) or libSQL client, runs the idempotent global
+DDL at boot (`init()`), and vends group-scoped `Storage` **facades** (`forGroup`)
+over that shared pool. A facade's `close()` is a no-op; only `Database.close()`
+tears down (tests must close the Database, or a leaked pg pool hangs vitest).
+Never give a group its own pool/client again.
+
+**The registry lives in the storage packages, not the server.** The registry tables
+(groups/members/tokens) sit behind core's `Registry` interface
+(`packages/core/src/registry/registry.ts`), implemented next to each `Database` —
+`apps/server` contains no SQL. The composed signup ops are single transactions that
+deliberately cross into the ledger tables: `createGroupWithMember` writes the group
+row + its `ccshare_meta` + the roster row + the member + the token atomically (a
+lost UNIQUE race throws `RegistryConflictError` and writes NOTHING — no
+compensation), and `addMemberWithToken` does member + roster + `writeSeq` bump +
+token. A registry contract suite (`packages/core/test/registry-contract.ts`) runs
+against memory, libSQL, and Postgres. The server picks the driver in
+`apps/server/src/backend.ts` (`makeServerDeps`) and caches per-group compositions
+(sink + view source + `LedgerWindow`) in the connection-free `TenantCache`
+(`apps/server/src/tenants.ts`); eviction is a plain map delete. Ledger rows carry a
+`group_id` referencing `groups(id)`.
 
 ### Schema changes require a versioned migration (do this every time)
 
@@ -135,8 +166,10 @@ DBs are simply re-inited.) For each such change:
 
 1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document
    what the new version adds.
-2. Add the columns/tables to the fresh `initializeSchema` of **all three** adapters
-   (memory, libSQL, Postgres) — keeping the `group_id` scoping.
+2. Add the columns/tables to the fresh schema of **all three** adapters (memory,
+   libSQL, Postgres) — the shared DDL (`ddl.ts` in each storage package) feeds both
+   `Database.init()` (boot) and `initializeSchema` (per-group provisioning) — keeping
+   the `group_id` scoping.
 3. Extend `migrate(toVersion)` in each adapter to bring an older DB forward
    **idempotently and additively** (nullable columns; `ADD COLUMN IF NOT EXISTS` /
    probe-then-`ALTER`), so it's forward- and multi-machine-safe. Never a destructive

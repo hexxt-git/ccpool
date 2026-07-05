@@ -3,7 +3,7 @@ export const GITHUB_URL = "https://github.com/hexxt-git/ccshare";
 export const SITE_URL = "https://ccshare.hexxt.dev";
 
 /**
- * The hosted ccshare server every "shared hosting" init points at. Hardcoded on
+ * The hosted ccshare server every init points at by default. Hardcoded on
  * purpose — members only ever type the two passwords. `CCSHARE_SERVER_URL`
  * overrides it for development and self-hosted servers.
  */

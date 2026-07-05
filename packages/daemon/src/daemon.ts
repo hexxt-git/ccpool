@@ -30,7 +30,7 @@ import {
 } from "./lifecycle.js";
 
 export interface DaemonDeps {
-  /** Where observations go: a storage adapter (self-host) or the server (shared). */
+  /** Where observations go: the ccshare server over HTTP. */
   sink: IngestSink;
   paths: DaemonPaths;
   /** The Claude config dir this daemon observes. */
@@ -316,8 +316,8 @@ export class Daemon {
           ingestOk = true;
         } catch (err) {
           if (err instanceof AccountConflictError) {
-            // The sink knows the binding better than we do (shared mode: the
-            // server's 409). Adopt it, flag the conflict, drop the batch.
+            // The sink knows the binding better than we do (the server's 409).
+            // Adopt it, flag the conflict, drop the batch.
             accountConflict = true;
             this.boundAccount = err.boundAccountId;
             this.boundAccountKnown = err.boundAccountId != null;
@@ -373,7 +373,7 @@ export class Daemon {
   }
 
   /**
-   * Startup: heal the schema (self-host), learn the binding (§1.5), and seed
+   * Startup: bootstrap the sink, learn the binding (§1.5), and seed
    * the previous reading so a reset that happened while this daemon was down is
    * caught (and recorded) on the very first poll — not silently missed because
    * `prev` started empty. Skip the seed on an account conflict: those samples

@@ -8,7 +8,7 @@ _Part of the [ccshare algorithm docs](../ALGORITHM.md)._
 
 Both surfaces render from one model, assembled by `gatherView`. It prefers the **shared backend** (everyone-included), falls back to the local **`state.json`** (instant, no network), and finally to a one-shot **live poll** so the view is never empty before the daemon's first write.
 
-The heavy half — the raw-row reads plus attribution — lives in core as `computeSharedView` and produces the compact **`SharedView`** (latest samples, shares, member rollups, and the roster — a few KB, never raw rows):
+The heavy half — the raw-row reads plus attribution — lives in core as `computeSharedView` (the reads below, feeding the pure `assembleSharedView`) and produces the compact **`SharedView`** (latest samples, shares, member rollups, and the roster — a few KB, never raw rows):
 
 ```ts
 // packages/core/src/state/view.ts  (abridged)
@@ -54,8 +54,17 @@ The TUI refreshes every 2 seconds, but the ledger changes at most about once per
 
 - Every ledger mutation (`recordBatch`, `upsertUser`, `prune`) bumps a single counter, `ccshare_meta.writeSeq`, **inside the same transaction**. Reading it (`getChangeToken`) is one single-row SELECT.
 - A computed view is cached under `viewCacheKey(token, now)` — the token plus a **60-second time bucket**. The bucket exists because `attributeShares` windows slide with `now`: without it, a group whose daemons stopped writing would be served a frozen split forever. Worst case is one recompute per minute even with zero writes; a healthy group writes ~1/min anyway, so the bucket adds ~nothing.
-- **Selfhost:** `StorageViewSource.fetchView()` does the 1-row token read; only a changed key re-runs `computeSharedView`. The heavy read drops from every-2s to ~1/min per viewer (~30×), and `reset_events` scans sit behind a real index now.
-- **Shared:** the same key doubles as the **ETag** of `GET /v1/view`. The client sends `If-None-Match`; the steady-state answer is a bodyless **304** backed by one single-row SELECT on the server. Only a real change re-sends the few-KB view (§13).
+- **Server side:** `StorageViewSource.fetchView()` does the 1-row token read; only a changed key recomputes. The heavy read drops from every-2s to ~1/min per viewer (~30×), and `reset_events` scans sit behind a real index now.
+- **Client side:** the same key doubles as the **ETag** of `GET /v1/view`. The client sends `If-None-Match`; the steady-state answer is a bodyless **304** backed by one single-row SELECT on the server. Only a real change re-sends the few-KB view (§13).
+
+### 8.6 The ledger window — why even the ~1/min recompute reads no rows
+
+The watermark bounds _how often_ the heavy work runs; the **`LedgerWindow`** (`packages/core/src/backend/window.ts`) removes the heavy read itself. The server composes one per live group, shared by that group's ingest sink and view source:
+
+- **Hydration, once:** the first view read performs the same full-window scan `computeSharedView` would, into in-memory maps keyed by the DB's natural keys.
+- **Append, ever after:** the ingest sink already holds each tick's rows when `recordBatch` commits, so it pushes them straight into the window. A steady-state recompute runs `assembleSharedView` over memory — the only storage read left is the tiny roster (plus the 1-row watermark).
+- **Byte-identical by construction:** appends are insert-if-absent per natural key (a retried tick's mutated values lose, matching `ON CONFLICT DO NOTHING`); an un-hydrated window drops appends (the hydration read covers them) and a hydrating one buffers them; the window trims only when the sink's prune actually deletes rows — never on a clock — so `latest` can keep surfacing a cap whose only sample is older than the 7-day window, exactly like the SQL path. Late-arriving batches (a machine re-sending a retained tick) are appended like any other and the next recompute re-attributes the full window, so attribution self-heals identically in both paths. An equivalence suite (`packages/core/test/window.test.ts`) pins windowed == full-scan across hydrate/append/retry/prune/eviction races.
+- **Eviction is free:** tenants hold no connections (their `Storage` is a facade over the one process pool), so the LRU just drops the window; the group re-hydrates with one scan on its next touch.
 
 Retention rides the same path: rows older than the widest cap window (+1 day of slack — `RETENTION_MS`, 8 days) can never influence a view again, so the sink prunes them on a throttled sweep and every table stays bounded.
 

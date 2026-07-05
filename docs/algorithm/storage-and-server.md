@@ -81,10 +81,10 @@ Every machine reaches the shared ledger the same way: over HTTP through the ccsh
 
 Joining a group takes exactly two secrets:
 
-- the **group password** — shared by the whole group; proves a machine may join at all;
+- the **group password** — shared by the whole group; proves a machine may join at all. This is the anti-spoofing secret: the account identity that locates a group (the `accountUuid`, and the email behind it) is **client-reported** — the server has no way to verify it, so anyone could present someone else's account or email. Claiming an identity therefore only _finds_ the group; without the group password it grants nothing;
 - a **member password** — personal; set the first time a name joins, required forever after to use that name. Taking an existing name without its password is refused (the anti-impersonation check), so `ccshare config set name <other>` is a real **login**.
 
-The group itself is located (and bound, §1.5) by the Claude `accountUuid`, resolved locally from `~/.claude.json` — never typed, never guessable from the outside alone. A successful join/login mints a **bearer token** (`ccs_…`), returned once and stored client-side in the 0600 `~/.ccshare/token` file; the server keeps only its sha256 hash. Passwords are stored as salted **scrypt** hashes (`scrypt:N:r:p:salt:hash`, self-describing so parameters can be raised without migrating rows) — `node:crypto` only, no native deps. Password endpoints sit behind an in-memory per-(IP, account) failure damper, and the CLI refuses plain `http://` for anything but localhost so a bearer never travels unencrypted.
+The group itself is located (and bound, §1.5) by the Claude `accountUuid`, resolved locally from `~/.claude.json` — never typed, never guessable from the outside alone. Because it is self-reported, that identity _locates_ a group but never _authenticates_ against one — the group password does that. A successful join/login mints a **bearer token** (`ccs_…`), returned once and stored client-side in the 0600 `~/.ccshare/token` file; the server keeps only its sha256 hash. Passwords are stored as salted **scrypt** hashes (`scrypt:N:r:p:salt:hash`, self-describing so parameters can be raised without migrating rows) — `node:crypto` only, no native deps. Password endpoints sit behind an in-memory per-(IP, account) failure damper, and the CLI refuses plain `http://` for anything but localhost so a bearer never travels unencrypted.
 
 ### What the server enforces
 

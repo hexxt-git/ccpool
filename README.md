@@ -58,10 +58,10 @@ passwords) or a database you run yourself — and the tool shows:
 - **Only new activity counts.** On startup the daemon baselines each transcript at
   its current end-of-file and ingests only lines appended after — old history is
   never backfilled.
-- **Two ways to share.** _Shared hosting_ (default): everyone authenticates to the
-  ccshare server with a group password plus a personal member password — nobody
-  manages a database, and nobody can write usage as somebody else. _Self-host_:
-  point everyone at your own libSQL/Turso or Postgres database.
+- **One way to share.** Everyone authenticates to the ccshare server with a group
+  password plus a personal member password — nobody manages a database, and nobody
+  can write usage as somebody else. A group can run its own server if it prefers
+  (see [Self-hosting the server](#self-hosting-the-server)).
 - **Runs on Node (≥20) and Bun.**
 
 ---
@@ -106,7 +106,10 @@ step at a time: choose a **name** (letters, digits, hyphens), then two passwords
 and nothing else:
 
 - the **group password** — everyone in the group uses the same one; knowing it is
-  what lets a machine join the group at all;
+  what lets a machine join the group at all. It exists because the account
+  identity that locates your group is reported by the client — anyone could
+  claim your account's email — so identity alone never grants access, only
+  this shared secret does;
 - your **member password** — yours alone; it protects your name, so nobody else
   can join or report usage as you.
 
