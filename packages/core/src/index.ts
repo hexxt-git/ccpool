@@ -37,8 +37,8 @@ export type {
 export { AccountConflictError } from "./backend/sink.js";
 export type { IngestSink, IngestBootstrap, IngestMeta } from "./backend/sink.js";
 export type { ViewSource } from "./backend/view-source.js";
-export { StorageIngestSink, StorageViewSource } from "./backend/local.js";
-export type { StorageIngestSinkOptions } from "./backend/local.js";
+export { StorageIngestSink, StorageViewSource } from "./backend/storage.js";
+export type { StorageIngestSinkOptions } from "./backend/storage.js";
 export { LedgerWindow } from "./backend/window.js";
 
 // identity

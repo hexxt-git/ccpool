@@ -82,7 +82,17 @@ writes through an `IngestSink` (one batched call per tick), views read through a
 `ViewSource` (returns the compact precomputed `SharedView`). On the client both are
 always the HTTP implementations. `apps/cli/src/lib/backend.ts` is the single place a
 config becomes a sink/source. The server composes the storage-backed pieces
-(`StorageIngestSink`/`StorageViewSource`) over a group-scoped `Storage`.
+(`StorageIngestSink`/`StorageViewSource` in `backend/storage.ts`) over a
+group-scoped `Storage`.
+
+`@ccshare/core` deliberately ships **both** sides of this boundary — the HTTP
+implementations (`HttpIngestSink`/`HttpViewSource`) and the storage-backed ones
+(plus `Storage`, `MemoryStorage`, `Database`) all come out of the one barrel. The
+"CLI never opens a database" split is held **by composition, not by module
+structure**: `apps/cli` depends on no `storage-*` adapter and its `backend.ts` only
+ever wires the HTTP pair, so a `Storage` never gets constructed client-side. There
+is no lint boundary enforcing this — keep it a rule you follow: the CLI imports the
+HTTP backend and view/format helpers from core, never `Storage*`/`Database`.
 
 ### The data flow
 
