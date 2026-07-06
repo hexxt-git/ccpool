@@ -66,6 +66,12 @@ export interface ReadCredentialsOptions {
   now?: number;
   /** Overrides the macOS keychain read (raw JSON blobs). A testing seam. */
   readKeychain?: (services: string[]) => Promise<string[]>;
+  /**
+   * Optional sink for per-source diagnostics — which sources were found, their
+   * expiry, and which one won. Lets the daemon show *why* it judged a token
+   * expired without this module depending on any logger.
+   */
+  onDebug?: (msg: string) => void;
 }
 
 /**
@@ -91,37 +97,59 @@ export async function readCredentials(
 ): Promise<Credentials | null> {
   const now = opts.now ?? Date.now();
   const readKeychain = opts.readKeychain ?? readKeychainDefault;
+  const debug = opts.onDebug ?? (() => {});
+  const expiry = (c: Credentials) =>
+    Number.isFinite(c.expiresAt) ? new Date(c.expiresAt).toISOString() : "invalid";
+
+  // Logs a source's expiry and returns it only if the token is still live.
+  const useIfFresh = (c: Credentials, label: string): Credentials | null => {
+    const expired = isTokenExpired(c, now);
+    debug(`credential source ${label}: expiresAt=${expiry(c)} expired=${expired}`);
+    if (!expired) {
+      debug(`credential chosen: ${label} (fresh)`);
+      return c;
+    }
+    return null;
+  };
 
   // First readable-but-expired source, kept as a last resort so a caller still
   // sees "expired" (and logs accordingly) rather than a bare "no credentials".
-  let stale: Credentials | null = null;
-  const take = (c: Credentials): Credentials | null => {
-    if (!isTokenExpired(c, now)) return c;
-    stale ??= c;
-    return null;
-  };
+  let stale: { c: Credentials; label: string } | null = null;
 
   // 1. plaintext file (Linux + universal fallback). A malformed-but-present file
   //    is a real error we surface; only "not there" (ENOENT) falls through.
   try {
-    const fresh = take(parse(await readFile(join(configDir, ".credentials.json"), "utf8")));
+    const c = parse(await readFile(join(configDir, ".credentials.json"), "utf8"));
+    const fresh = useIfFresh(c, "file");
     if (fresh) return fresh;
+    stale ??= { c, label: "file" };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    debug("credential source file: absent (ENOENT)");
   }
 
   // 2. macOS keychain — the source of truth on darwin. A live token here must win
   //    over a stale file above, so we always consult it when the file wasn't fresh.
-  for (const blob of await readKeychain(keychainServices(configDir))) {
+  const blobs = await readKeychain(keychainServices(configDir));
+  debug(`keychain returned ${blobs.length} entr${blobs.length === 1 ? "y" : "ies"}`);
+  for (let i = 0; i < blobs.length; i++) {
     let c: Credentials;
     try {
-      c = parse(blob);
+      c = parse(blobs[i]!);
     } catch {
+      debug(`credential source keychain[${i}]: unparseable — skipping`);
       continue; // malformed keychain entry — try the next
     }
-    const fresh = take(c);
+    const label = `keychain[${i}]`;
+    const fresh = useIfFresh(c, label);
     if (fresh) return fresh;
+    stale ??= { c, label };
   }
 
-  return stale;
+  if (stale) {
+    debug(`credential chosen: ${stale.label} (expired — no fresher source found)`);
+    return stale.c;
+  }
+  debug("no credential source available");
+  return null;
 }

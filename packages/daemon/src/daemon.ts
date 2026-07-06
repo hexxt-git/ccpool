@@ -231,7 +231,13 @@ export class Daemon {
     const nowIso = new Date(this.nowMs()).toISOString();
 
     const account = await resolveAccount(configDir);
-    const creds = await readCredentials(configDir);
+    this.log.debug(
+      `account resolved: id=${account?.id ?? "none"} hydrated=${account?.hydrated ?? false}`
+    );
+    const creds = await readCredentials(configDir, {
+      now: this.nowMs(),
+      onDebug: (m) => this.log.debug(m),
+    });
 
     // Guard: never write into a ledger bound to a *different* Claude account —
     // interleaving two tanks in one `usage_samples` table corrupts attribution and
@@ -258,11 +264,15 @@ export class Daemon {
       this.log.debug("token missing/expired — skipping poll");
     } else {
       try {
+        this.log.debug("polling usage endpoint…");
         const fresh = await pollUsage(creds.accessToken, {
           fetchImpl: this.deps.fetchImpl,
           version: this.deps.version,
           capturedAt: nowIso,
         });
+        this.log.debug(
+          `poll ok: ${fresh.map((s) => `${s.cap}=${s.pct}%`).join(", ") || "no caps"}`
+        );
         const resets = detectResets(this.prev, fresh, nowIso);
         for (const e of resets) {
           this.log.info(`reset detected on ${e.cap} (was ${e.previousPct}%)`);
@@ -336,10 +346,16 @@ export class Daemon {
       const toSend = this.pending ? mergeBatches(this.pending, batch) : batch;
       if (!isEmptyBatch(toSend)) {
         try {
+          this.log.debug(
+            `ingest: sending ${toSend.samples.length} sample(s), ${toSend.messages.length} message(s), ` +
+              `${toSend.resets.length} reset(s), ${toSend.markers.length} marker(s)` +
+              (this.pending ? " (includes a retried batch)" : "")
+          );
           await this.deps.sink.ingest(toSend, {
             at: nowIso,
             accountId: account?.hydrated ? account.id : null,
           });
+          this.log.debug("ingest ok");
           this.pending = null;
           ingestOk = true;
         } catch (err) {
