@@ -46,6 +46,28 @@ function keychainServices(configDir: string): string[] {
   return ["Claude Code-credentials", `Claude Code-credentials-${hash}`];
 }
 
+/** Reads each macOS keychain service, returning the raw JSON blobs it finds. */
+async function readKeychainDefault(services: string[]): Promise<string[]> {
+  if (process.platform !== "darwin") return [];
+  const blobs: string[] = [];
+  for (const svc of services) {
+    try {
+      const { stdout } = await pExecFile("security", ["find-generic-password", "-s", svc, "-w"]);
+      blobs.push(stdout);
+    } catch {
+      // service not present — try the next name
+    }
+  }
+  return blobs;
+}
+
+export interface ReadCredentialsOptions {
+  /** Epoch ms used to judge freshness. Defaults to `Date.now()`. */
+  now?: number;
+  /** Overrides the macOS keychain read (raw JSON blobs). A testing seam. */
+  readKeychain?: (services: string[]) => Promise<string[]>;
+}
+
 /**
  * Read the stored credentials for an account's config dir, or null if none.
  *
@@ -53,26 +75,53 @@ function keychainServices(configDir: string): string[] {
  * - macOS: the login keychain (`security find-generic-password`).
  *
  * Windows DPAPI is not yet supported; a plaintext file there still works.
+ *
+ * Every source is only a *cache* of the OAuth token Claude Code minted, and any
+ * of them can go stale: on macOS the plaintext file is Claude Code's fallback
+ * when the keychain is briefly locked, and it is never deleted once the keychain
+ * recovers — so it can linger for weeks with a long-expired token while the
+ * keychain holds the live one. We therefore never let an expired source shadow a
+ * live one: return the first *fresh* token found, and only fall back to an
+ * expired source (so the caller can report "expired") when nothing fresher
+ * exists anywhere.
  */
-export async function readCredentials(configDir: string): Promise<Credentials | null> {
-  // 1. plaintext file (Linux + universal fallback)
+export async function readCredentials(
+  configDir: string,
+  opts: ReadCredentialsOptions = {}
+): Promise<Credentials | null> {
+  const now = opts.now ?? Date.now();
+  const readKeychain = opts.readKeychain ?? readKeychainDefault;
+
+  // First readable-but-expired source, kept as a last resort so a caller still
+  // sees "expired" (and logs accordingly) rather than a bare "no credentials".
+  let stale: Credentials | null = null;
+  const take = (c: Credentials): Credentials | null => {
+    if (!isTokenExpired(c, now)) return c;
+    stale ??= c;
+    return null;
+  };
+
+  // 1. plaintext file (Linux + universal fallback). A malformed-but-present file
+  //    is a real error we surface; only "not there" (ENOENT) falls through.
   try {
-    return parse(await readFile(join(configDir, ".credentials.json"), "utf8"));
+    const fresh = take(parse(await readFile(join(configDir, ".credentials.json"), "utf8")));
+    if (fresh) return fresh;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
-  // 2. macOS keychain
-  if (process.platform === "darwin") {
-    for (const svc of keychainServices(configDir)) {
-      try {
-        const { stdout } = await pExecFile("security", ["find-generic-password", "-s", svc, "-w"]);
-        return parse(stdout);
-      } catch {
-        // try the next service name
-      }
+  // 2. macOS keychain — the source of truth on darwin. A live token here must win
+  //    over a stale file above, so we always consult it when the file wasn't fresh.
+  for (const blob of await readKeychain(keychainServices(configDir))) {
+    let c: Credentials;
+    try {
+      c = parse(blob);
+    } catch {
+      continue; // malformed keychain entry — try the next
     }
+    const fresh = take(c);
+    if (fresh) return fresh;
   }
 
-  return null;
+  return stale;
 }
