@@ -14,7 +14,10 @@ import { makeApp, makeMemoryDeps } from "../src/app.js";
  * attributed view back — proving daemon → server → view end to end.
  */
 
-const NOW = Date.parse("2026-06-29T20:00:00.000Z");
+// Anchored to the current time, not a fixed date: the server rolls members up
+// over a 7-day window from real `Date.now()`, so a hardcoded past timestamp
+// would silently age out of the window and fail this test 7 days later.
+const NOW = Date.now() - 60_000;
 const ACCOUNT = "acc-e2e-1";
 
 let server: ServerType;

@@ -10,6 +10,14 @@ import { makeApp, makeMemoryDeps } from "../src/app.js";
 
 const ACCOUNT = "acc-uuid-1";
 
+// Anchored to the current time, not a fixed date: the server rolls members up
+// over a 7-day window from real `Date.now()`, so a hardcoded past timestamp
+// would silently age out of that window and break the member assertions 7 days
+// after the date was written. `AT` is the tank/sample instant; `MSG_AT` is the
+// message, a minute earlier (as a real transcript line would be).
+const AT = new Date(Date.now() - 60_000).toISOString();
+const MSG_AT = new Date(Date.now() - 120_000).toISOString();
+
 let app: Hono<never>;
 
 beforeEach(() => {
@@ -42,17 +50,15 @@ const bearer = (token: string): Record<string, string> => ({
 
 function tick(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    at: "2026-06-29T20:00:00.000Z",
+    at: AT,
     accountId: ACCOUNT,
-    samples: [
-      { cap: "five_hour", pct: 42, resetsAt: null, capturedAt: "2026-06-29T20:00:00.000Z" },
-    ],
+    samples: [{ cap: "five_hour", pct: 42, resetsAt: null, capturedAt: AT }],
     resets: [],
     messages: [
       {
         uuid: "m1",
         user: "spoofed-name", // must be overwritten with the authed member
-        timestamp: "2026-06-29T19:59:00.000Z",
+        timestamp: MSG_AT,
         model: "claude-opus-4-8",
         inputTokens: 1,
         outputTokens: 2,
@@ -287,9 +293,7 @@ describe("ingest", () => {
 
     const view = await app.request("/v1/view", { headers: bearer(auth.token) });
     const body = (await view.json()) as SharedView;
-    expect(body.samples).toEqual([
-      { cap: "five_hour", pct: 42, resetsAt: null, capturedAt: "2026-06-29T20:00:00.000Z" },
-    ]);
+    expect(body.samples).toEqual([{ cap: "five_hour", pct: 42, resetsAt: null, capturedAt: AT }]);
     // the spoofed user name never reaches the ledger
     expect(body.members.map((m) => m.user)).toEqual(["sam"]);
   });
