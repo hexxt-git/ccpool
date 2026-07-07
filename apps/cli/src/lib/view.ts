@@ -45,11 +45,16 @@ export interface ViewModel {
    * `updatedAt` masking a broken poll (429) or ingest (401/unreachable).
    */
   syncedAt: string | null;
+  /** The daemon's last poll failure (e.g. 429 rate-limit), or null when clean. */
+  pollError: LocalState["pollError"];
 }
 
 function configDirOf(cfg: Config): string {
   return cfg.configDirs[0] ?? process.cwd();
 }
+
+/** The last-known roster to fall back to when a backend read fails. */
+export type LastRoster = Pick<ViewModel, "shares" | "members" | "users">;
 
 /**
  * The account email lives in `~/.claude.json`, which barely changes. The TUI calls
@@ -83,7 +88,11 @@ function readState(stateFile: string): LocalState | null {
  * first write. The heavy work lives behind `source` — a 2s refresh costs a
  * bodyless 304 from the server when nothing changed.
  */
-export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewModel> {
+export async function gatherView(
+  cfg: Config,
+  source: ViewSource,
+  prev?: LastRoster | null
+): Promise<ViewModel> {
   const configDir = configDirOf(cfg);
   const { stateFile, pidFile } = daemonPaths(ccshareDir(), configDir);
 
@@ -112,7 +121,18 @@ export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewM
     // (the token is unknown or was revoked, e.g. the ledger was reset). That's a
     // logged-out state, not a network problem, and the views must say so.
     if (e instanceof ApiRequestError && e.status === 401) loggedOut = true;
-    else stale = true;
+    else {
+      stale = true;
+      // Keep showing the last-known roster instead of a blank members table —
+      // a transient backend blip must not erase everyone. The caller (the TUI)
+      // passes its last clean view; samples fall back to state.json just below,
+      // the roster falls back to `prev` here.
+      if (prev) {
+        shares = prev.shares;
+        members = prev.members;
+        users = prev.users;
+      }
+    }
   }
 
   // The daemon's ingest can be auth-rejected even while reads still succeed (a
@@ -151,6 +171,7 @@ export async function gatherView(cfg: Config, source: ViewSource): Promise<ViewM
     account,
     updatedAt: state?.updatedAt ?? null,
     syncedAt: state?.lastSyncAt ?? null,
+    pollError: state?.pollError ?? null,
   };
 }
 

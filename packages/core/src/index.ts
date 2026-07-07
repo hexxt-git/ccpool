@@ -49,7 +49,14 @@ export { resolveAccount } from "./identity/resolver.js";
 export type { AccountIdentity } from "./identity/resolver.js";
 
 // usage
-export { pollUsage, parseUsage, UsageAuthError, USAGE_URL, OAUTH_BETA } from "./usage/poller.js";
+export {
+  pollUsage,
+  parseUsage,
+  UsageAuthError,
+  UsageRequestError,
+  USAGE_URL,
+  OAUTH_BETA,
+} from "./usage/poller.js";
 export type { PollOptions } from "./usage/poller.js";
 export { detectResets } from "./usage/resets.js";
 

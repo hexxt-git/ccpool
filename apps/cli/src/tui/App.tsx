@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
 import type { Config, ViewSource } from "@ccshare/core";
-import { gatherView } from "../lib/view.js";
+import { gatherView, type LastRoster } from "../lib/view.js";
 import { toDesignModel, type DesignModel } from "../lib/design-model.js";
 import { loadConfig } from "../lib/config.js";
 import { DESIGNS } from "./designs/index.js";
@@ -52,15 +52,26 @@ export function App({
   const [scroll, setScroll] = useState(0);
   const [msg, setMsg] = useState(0);
 
+  // The last *clean* view's roster, reused when a poll can't reach the backend so
+  // the members table keeps showing everyone instead of blanking (view.ts).
+  const lastRoster = useRef<LastRoster | null>(null);
+
   const refresh = useCallback(async () => {
     try {
-      const [vm, freshCfg] = await Promise.all([gatherView(cfg, viewSource), loadConfig()]);
+      const [vm, freshCfg] = await Promise.all([
+        gatherView(cfg, viewSource, lastRoster.current),
+        loadConfig(),
+      ]);
       // A rejected bearer isn't a view we can render — bail to re-init before we
       // paint a misleading all-`unknown` screen. Root logs out and swaps screens.
       if (vm.loggedOut && onLoggedOut) {
         onLoggedOut();
         return;
       }
+      // Remember only clean reads, so a stale tick falls back to the last good
+      // roster rather than chaining off an already-degraded one.
+      if (!vm.stale)
+        lastRoster.current = { shares: vm.shares, members: vm.members, users: vm.users };
       setModel(toDesignModel(vm, freshCfg?.name ?? cfg.name));
       setErr(null);
     } catch (e) {

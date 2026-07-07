@@ -89,6 +89,38 @@ describe("gatherView error classification", () => {
   });
 });
 
+describe("gatherView roster retention on a failed read", () => {
+  const roster = {
+    shares: [],
+    members: [{ name: "sam", byCap: {}, tokens: 5, lastSeen: "2026-06-29T20:00:00.000Z" }],
+    users: [{ name: "sam" }],
+  } as unknown as Parameters<typeof gatherView>[2];
+
+  it("keeps the last-known roster on a stale (unreachable) read", async () => {
+    const vm = await gatherView(cfg, failingSource(new Error("fetch failed")), roster);
+    expect(vm.stale).toBe(true);
+    expect(vm.members).toEqual(roster!.members);
+    expect(vm.users).toEqual(roster!.users);
+  });
+
+  it("does NOT reuse the roster on a 401 — a logout must clear it", async () => {
+    const vm = await gatherView(
+      cfg,
+      failingSource(new ApiRequestError(401, "auth", "unknown token")),
+      roster
+    );
+    expect(vm.loggedOut).toBe(true);
+    expect(vm.members).toEqual([]);
+    expect(vm.users).toEqual([]);
+  });
+
+  it("prefers a successful read's roster over the fallback", async () => {
+    const vm = await gatherView(cfg, emptySource, roster);
+    expect(vm.stale).toBe(false);
+    expect(vm.members).toEqual([]); // the (empty) live read wins, not the fallback
+  });
+});
+
 describe("gatherView state.json mapping", () => {
   it("surfaces state.lastSyncAt as syncedAt, distinct from updatedAt", async () => {
     writeState({
@@ -106,5 +138,23 @@ describe("gatherView state.json mapping", () => {
     });
     const vm = await gatherView(cfg, emptySource);
     expect(vm.loggedOut).toBe(true);
+  });
+
+  it("surfaces state.pollError (e.g. a 429) so the view can show why sync stalled", async () => {
+    writeState({
+      pollError: { status: 429, message: "rate-limited (429)", at: "2026-06-29T20:04:00.000Z" },
+    });
+    const vm = await gatherView(cfg, emptySource);
+    expect(vm.pollError).toEqual({
+      status: 429,
+      message: "rate-limited (429)",
+      at: "2026-06-29T20:04:00.000Z",
+    });
+  });
+
+  it("has a null pollError when state records no failure", async () => {
+    writeState({});
+    const vm = await gatherView(cfg, emptySource);
+    expect(vm.pollError).toBeNull();
   });
 });

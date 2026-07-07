@@ -140,6 +140,33 @@ describe("logged out (server rejected the bearer)", () => {
   }
 });
 
+describe("usage poll rate-limited (429)", () => {
+  // The daemon is up and the roster is intact — a 429 only stalls the sync. We
+  // must still show everyone, plus a red alert explaining the paused sync.
+  const rateLimitedVm: ViewModel = {
+    ...vm,
+    stale: false,
+    loggedOut: false,
+    pollError: { status: 429, message: "rate-limited (429)", at: iso(1) },
+  };
+  const model = toDesignModel(rateLimitedVm, "alice", now);
+
+  it("raises a red alert naming the 429 while keeping the members", () => {
+    expect(model.alert).toMatch(/rate-limited \(429\)/);
+    expect(model.loggedOut).toBe(false);
+    // The roster is NOT blanked — everyone still shows.
+    expect(model.members.some((m) => m.name === "alice")).toBe(true);
+  });
+
+  for (const d of DESIGNS) {
+    it(`renders "${d.name}" with the 429 alert`, () => {
+      const { lastFrame, unmount } = render(<Box>{d.render(model, 108, 24, 0)}</Box>);
+      expect(lastFrame() ?? "").toMatch(/429/);
+      unmount();
+    });
+  }
+});
+
 describe("freshly initialized ledger (connected, no usage yet)", () => {
   // A live view whose ledger has a tank reading but no attributed activity: shares
   // are empty until someone uses Claude Code. The table must still show `unknown`

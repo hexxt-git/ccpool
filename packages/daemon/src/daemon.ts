@@ -13,7 +13,9 @@ import {
   readCredentials,
   resolveAccount,
   UsageAuthError,
+  UsageRequestError,
   type IngestSink,
+  type LocalState,
   type MessageUsage,
   type TickBatch,
   type UsageMarker,
@@ -55,6 +57,13 @@ export interface DaemonDeps {
   now?: () => number;
   fetchImpl?: typeof fetch;
   version?: string;
+  /**
+   * Read the stored OAuth credentials. Injectable so tests can supply a token
+   * deterministically instead of falling through to the host's real macOS
+   * keychain (readCredentials consults it when the plaintext file is missing or
+   * expired). Defaults to core's {@link readCredentials}.
+   */
+  readCredentials?: typeof readCredentials;
 }
 
 const MAX_BACKOFF_MS = 5 * 60_000;
@@ -234,7 +243,7 @@ export class Daemon {
     this.log.debug(
       `account resolved: id=${account?.id ?? "none"} hydrated=${account?.hydrated ?? false}`
     );
-    const creds = await readCredentials(configDir, {
+    const creds = await (this.deps.readCredentials ?? readCredentials)(configDir, {
       now: this.nowMs(),
       onDebug: (m) => this.log.debug(m),
     });
@@ -254,6 +263,7 @@ export class Daemon {
     let tokenExpired = false;
     let pollFailed = false;
     let pollOk = false; // a fresh tank reading landed this tick
+    let pollError: LocalState["pollError"] = null; // last poll's failure, surfaced to state.json
     const prevSamples = this.prev;
     let samples = this.prev;
     const batch = emptyBatch();
@@ -288,8 +298,18 @@ export class Daemon {
           tokenExpired = true;
           this.log.debug("poll returned 401 — treating as expired");
         } else {
-          // Network error: note it for backoff, but carry on with ingest + state.
+          // Network / non-2xx error: note it for backoff, but carry on with
+          // ingest + state. Record *why* so the TUI can explain a stalled sync
+          // (a 429 rate-limit is the common one) instead of a silent gap.
           pollFailed = true;
+          const status = err instanceof UsageRequestError ? err.status : null;
+          const message =
+            status === 429
+              ? "rate-limited (429)"
+              : status !== null
+                ? `poll failed (HTTP ${status})`
+                : `poll failed (${(err as Error).message})`;
+          pollError = { status, message, at: nowIso };
           this.log.warn(`usage poll failed: ${(err as Error).message}`);
         }
       }
@@ -406,6 +426,7 @@ export class Daemon {
         accountConflict,
         authRejected: this.authRejected,
         lastSyncAt: this.lastSyncAt,
+        pollError,
         samples,
         pid: process.pid,
         startedAt: this.startedAt,

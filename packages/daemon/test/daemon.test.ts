@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   ApiRequestError,
   MemoryStorage,
+  readCredentials as coreReadCredentials,
   StorageIngestSink,
   type IngestMeta,
   type IngestSink,
@@ -79,6 +80,11 @@ function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Harness {
       pollIntervalMs: 60_000,
       now,
       fetchImpl: fetchMock as unknown as typeof fetch,
+      // Read only the test's plaintext file — never fall through to the host's
+      // real macOS keychain, which would otherwise satisfy an intentionally
+      // expired token and make the poll-skip cases flaky on darwin.
+      readCredentials: (dir, opts) =>
+        coreReadCredentials(dir, { ...opts, readKeychain: async () => [] }),
       logger: { debug() {}, info() {}, warn() {}, error() {} },
     },
   };

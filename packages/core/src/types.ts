@@ -211,4 +211,16 @@ export interface LocalState {
     pid: number;
     startedAt: string;
   };
+  /**
+   * The last usage poll that failed, or null when the last poll succeeded (or
+   * none has run). Lets readers explain a stalled "synced X ago" — e.g. a 429
+   * rate-limit — instead of a silent gap, and tell "running but rate-limited"
+   * apart from "not started" on a cold start with no samples yet. A 401/expired
+   * token is *not* recorded here; it surfaces via `account.tokenExpired`.
+   */
+  pollError?: {
+    status: number | null; // HTTP status when known (e.g. 429), else null
+    message: string; // short, render-ready reason
+    at: string; // ISO 8601 of the failed poll
+  } | null;
 }

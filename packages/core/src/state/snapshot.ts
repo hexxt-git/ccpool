@@ -11,6 +11,8 @@ export interface SnapshotInput {
   authRejected?: boolean;
   /** ISO 8601 of the last fully-clean sync (fresh poll + landed ingest), or null. */
   lastSyncAt?: string | null;
+  /** The last poll failure (e.g. 429), or null when the last poll was clean. */
+  pollError?: LocalState["pollError"];
   samples: UsageSample[];
   pid: number;
   startedAt: string;
@@ -30,6 +32,7 @@ export function buildLocalState(input: SnapshotInput): LocalState {
     },
     samples: input.samples,
     daemon: { pid: input.pid, startedAt: input.startedAt },
+    pollError: input.pollError ?? null,
   };
 }
 

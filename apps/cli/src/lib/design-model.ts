@@ -125,7 +125,9 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     ? "logged out — run `ccshare init` to sign back in"
     : vm.stale
       ? "can't reach the ccshare server — showing last-known"
-      : null;
+      : vm.pollError
+        ? `usage poll ${vm.pollError.message} — retrying...`
+        : null;
 
   const notes: string[] = [];
   // Loudest first: a mismatched account means the ledger is NOT recording this

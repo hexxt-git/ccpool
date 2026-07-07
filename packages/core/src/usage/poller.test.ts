@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUsage, pollUsage, UsageAuthError } from "./poller.js";
+import { parseUsage, pollUsage, UsageAuthError, UsageRequestError } from "./poller.js";
 
 // A trimmed copy of the real /api/oauth/usage payload shape.
 const liveBody = {
@@ -78,8 +78,11 @@ describe("pollUsage", () => {
     await expect(pollUsage("tok", { fetchImpl })).rejects.toBeInstanceOf(UsageAuthError);
   });
 
-  it("throws a generic error on other failures (for backoff)", async () => {
-    const fetchImpl = (async () => new Response("", { status: 503 })) as unknown as typeof fetch;
-    await expect(pollUsage("tok", { fetchImpl })).rejects.toThrow("503");
+  it("throws UsageRequestError carrying the status on other failures (for backoff)", async () => {
+    const fetchImpl = (async () => new Response("", { status: 429 })) as unknown as typeof fetch;
+    const err = await pollUsage("tok", { fetchImpl }).catch((e) => e);
+    expect(err).toBeInstanceOf(UsageRequestError);
+    expect((err as UsageRequestError).status).toBe(429);
+    expect((err as Error).message).toContain("429");
   });
 });

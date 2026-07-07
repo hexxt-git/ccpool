@@ -16,6 +16,15 @@ export class UsageAuthError extends Error {
   override name = "UsageAuthError";
 }
 
+/** Thrown on any other non-2xx (e.g. 429 rate-limit) — carries the status so
+ * callers can surface *why* the poll failed instead of a bare backoff. */
+export class UsageRequestError extends Error {
+  override name = "UsageRequestError";
+  constructor(readonly status: number) {
+    super(`usage endpoint returned ${status}`);
+  }
+}
+
 /**
  * Parse the usage payload into one sample per *available* cap. A cap that is
  * `null` (not applicable to the plan) is skipped — never rendered as 0.
@@ -76,7 +85,7 @@ export async function pollUsage(
     throw new UsageAuthError("usage endpoint returned 401 (token expired?)");
   }
   if (!res.ok) {
-    throw new Error(`usage endpoint returned ${res.status}`);
+    throw new UsageRequestError(res.status);
   }
 
   return parseUsage(await res.json(), opts.capturedAt);
