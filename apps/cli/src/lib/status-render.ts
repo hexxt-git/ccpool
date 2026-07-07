@@ -154,7 +154,13 @@ export function renderStatusLines(
   const lines = [...header(model, width, paint)];
   if (model.alert) lines.push("", paint(model.alert, HEX.red, true));
   if (model.caps.length === 0) {
-    lines.push("", paint("no data yet — start the daemon with `ccshare daemon start`", HEX.dim));
+    // No tank reading yet. Only tell the user to start the daemon when it really
+    // isn't running — if it is up (just waiting on its first poll, e.g. while
+    // rate-limited), saying "start the daemon" is wrong and misleading.
+    const empty = model.daemonRunning
+      ? "no reading yet — waiting for the first usage poll…"
+      : "no data yet — start the daemon with `ccshare daemon start`";
+    lines.push("", paint(empty, HEX.dim));
   } else {
     lines.push("", ...overall(model, width, paint), "", ...members(model, width, paint));
   }
