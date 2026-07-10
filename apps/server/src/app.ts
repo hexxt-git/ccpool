@@ -12,7 +12,6 @@ import type { GroupRow, MemberRow, ServerDeps } from "./deps.js";
 import { parseCreateGroup, parseIngest, parseJoinGroup, parseLogin } from "./validate.js";
 
 export type { ServerDeps } from "./deps.js";
-export { makeMemoryDeps } from "./memory-deps.js";
 
 /** Ingest bodies above this are refused outright (a tick is a few KB). */
 const MAX_INGEST_BYTES = 1024 * 1024;

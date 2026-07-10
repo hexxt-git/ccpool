@@ -22,15 +22,16 @@ Since the rewrite there is **one architecture**: every machine reaches the share
 ledger over HTTP through the ccshare server, and the server owns the only
 database. So there are two very different cost centres:
 
-- **The server database** — a single relational database (Postgres _or_ libSQL)
-  holding every group's ledger, each row scoped by a `group_id` foreign key to
-  the `groups` table. This is where all storage, writes, and heavy reads live.
+- **The server database** — a single libSQL database (a `file:` local SQLite or a
+  remote `libsql://` Turso) holding every group's ledger, each row scoped by a
+  `group_id` foreign key to the `groups` table. This is where all storage, writes,
+  and heavy reads live.
 - **The client (per machine)** — the CLI/daemon/TUI. It never opens a database;
   its only cost is HTTP requests to the server (one ingest per minute, one view
   poll every 2 s, almost all answered `304`).
 
-The figures are identical whether the server runs on Postgres or libSQL — the
-adapters implement the same relational model.
+The figures are the same for a local `file:` database or a remote Turso — the one
+adapter speaks both.
 
 ---
 

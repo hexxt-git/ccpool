@@ -8,9 +8,10 @@ import { makeServerDeps, resolveServerBackend } from "../src/backend.js";
 import type { ServerDeps } from "../src/deps.js";
 
 /**
- * Full server on libSQL (a throwaway `file:` database — no external infra). Proves
- * the libSQL adapter serves the same multi-tenant surface as Postgres: registry
- * tables + per-group ledgers in ONE database, scoped by `group_id`.
+ * Full server over a `file:` libSQL database (throwaway temp dir — no external
+ * infra). The rest of the server suite runs on `:memory:`; this one pins the
+ * on-disk path: URL normalization + parent-dir creation, and registry tables +
+ * per-group ledgers isolated by `group_id` in ONE database.
  */
 describe("server on libSQL (file:)", () => {
   const dir = mkdtempSync(join(tmpdir(), "ccshare-srv-libsql-"));
@@ -24,13 +25,14 @@ describe("server on libSQL (file:)", () => {
     await deps?.db.close();
   });
 
-  it("resolves libsql from a file: DATABASE_URL", () => {
+  it("reads the connection from DATABASE_URL", () => {
     const backend = resolveServerBackend({ DATABASE_URL: url } as NodeJS.ProcessEnv);
-    expect(backend.driver).toBe("libsql");
+    expect(backend.url).toBe(url);
+    expect(backend.authToken).toBeUndefined();
   });
 
   it("creates two groups, ingests, and isolates their ledgers by group_id", async () => {
-    deps = makeServerDeps({ driver: "libsql", url });
+    deps = makeServerDeps({ url });
     await deps.db.init();
     const app = makeApp(deps);
 

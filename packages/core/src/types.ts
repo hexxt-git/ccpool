@@ -59,19 +59,6 @@ export interface ResetEvent {
 }
 
 /**
- * One point on a cap's **monotonic usage envelope**: the tank reached `pct` — a new
- * max within the current window — at `at`. The server derives these from the raw
- * `UsageSample`s daemons POST and persists only these; the envelope is all
- * attribution consumes, so per-member raw sample streams never hit the ledger
- * (ADR-0004). One canonical stream per group per cap. Natural key `(cap, at)`.
- */
-export interface ChangePoint {
-  cap: CapKind;
-  at: string; // ISO 8601, when the new max was observed
-  pct: number; // 0..100, the new envelope level
-}
-
-/**
  * One attributable Claude Code message, credited to the active name at ingest.
  * Cache fields are reliable; raw input/output undercount — kept but flagged.
  */
@@ -221,12 +208,6 @@ export type DbInspection =
     };
 
 // ── config ────────────────────────────────────────────────────────────────────
-
-/**
- * The name a storage adapter reports for itself. Only the server ever opens a
- * database; the CLI always reaches the ledger over HTTP.
- */
-export type StorageDriver = "libsql" | "postgres" | "memory";
 
 export interface Config {
   /** The ccshare server. The bearer token lives in the 0600 token file, never here. */

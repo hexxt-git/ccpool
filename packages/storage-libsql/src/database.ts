@@ -1,5 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
-import type { Database, Registry, Storage } from "@ccshare/core";
+import type { Storage } from "@ccshare/core";
 import { LEDGER_DDL, REGISTRY_DDL } from "./ddl.js";
 import { LibsqlRegistry } from "./registry.js";
 import { LibsqlStorage } from "./storage.js";
@@ -11,14 +11,16 @@ export interface LibsqlDatabaseOptions {
 }
 
 /**
- * One libSQL database, one process-wide client. Owns both table families —
- * the registry and every group's ledger — so composed registry transactions
- * provision ledgers atomically, and `forGroup` hands out facades instead of
- * per-group clients.
+ * One libSQL database, one process-wide client — the single thing the server
+ * opens. Owns both table families (the registry and every group's ledger) so
+ * composed registry transactions provision ledgers atomically, and `forGroup`
+ * hands out cheap group-scoped `Storage` facades over the shared client instead
+ * of per-group clients (a facade's `close()` is a no-op; only this `close()`
+ * tears the client down).
  */
-export class LibsqlDatabase implements Database {
+export class LibsqlDatabase {
   private readonly client: Client;
-  readonly registry: Registry;
+  readonly registry: LibsqlRegistry;
 
   constructor(url: string, opts: LibsqlDatabaseOptions = {}) {
     // Normalize `~` / bare-path `file:` URLs (libsql rejects `~`) and make sure

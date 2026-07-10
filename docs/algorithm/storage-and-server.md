@@ -1,10 +1,10 @@
-# Storage and the server — the swappable boundary and tenancy
+# Storage and the server — the storage boundary and tenancy
 
 _Part of the [ccshare algorithm docs](../ALGORITHM.md)._
 
 ---
 
-## 9. Storage — the swappable boundary (and the layer above it)
+## 9. Storage — the boundary (and the layer above it)
 
 Two boundaries stack here. The **outer** one is what commands compose (`apps/cli/src/lib/backend.ts`): the daemon writes through an `IngestSink`, views read through a `ViewSource`. The client always speaks HTTP to the server — there is no other implementation to pick:
 
@@ -17,7 +17,7 @@ function makeViewSource(cfg: Config): ViewSource {
 }
 ```
 
-The **inner** boundary is `Storage` — used only on the **server**. It's still deliberately dumb (rows in, rows out, no business logic), and its two adapters (`LibsqlStorage`, `PostgresStorage`, plus `MemoryStorage` for tests) implement the same relational model. Every instance is **scoped to one `groupId`**, bound at construction and injected into every query as a `group_id` column, so one shared database backs every group (see §13). The interface is unchanged by that — callers see a single ledger:
+The **inner** boundary is `Storage` — used only on the **server**. It's deliberately dumb (rows in, rows out, no business logic), and its one adapter (`LibsqlStorage`, in `@ccshare/storage-libsql`) implements the relational model. Every instance is **scoped to one `groupId`**, bound at construction and injected into every query as a `group_id` column, so one shared database backs every group (see §13). The interface is unchanged by that — callers see a single ledger:
 
 ```ts
 interface Storage {
@@ -44,7 +44,7 @@ interface Storage {
 }
 ```
 
-`recordBatch` is one transaction (`sql.begin` in Postgres, `client.batch` in libSQL), so a tick is all-or-nothing and bumps that group's `writeSeq` exactly once. A single **contract test suite** runs against the memory, libSQL, and Postgres adapters — including a two-groups-in-one-database isolation case — which is what proves swappability, `group_id` isolation, the batching/dedup/prune semantics, the change token, and the group-setup rules below.
+`recordBatch` is one transaction (`client.batch(..., "write")`), so a tick is all-or-nothing and bumps that group's `writeSeq` exactly once. A **contract test suite** runs `LibsqlStorage` over a libSQL `:memory:` database — including a two-groups-in-one-database isolation case — which is what proves correctness, `group_id` isolation, the batching/dedup/prune semantics, the change token, and the group-setup rules below.
 
 ### Group inspection — per-group setup
 
@@ -65,11 +65,11 @@ The marker is a per-group `ccshare_meta` row (keyed by `group_id`) holding `app=
 The same code runs on **Node (≥20) and Bun**, so it avoids native-only modules:
 
 - HTTP via the global `fetch`.
-- Default storage `@libsql/client` (one driver for `file:` and `libsql://`).
+- Storage via `@libsql/client` (one driver for `file:` and remote `libsql://`).
 - `node:` imports for fs/path/crypto.
 - The only runtime branch is `spawnDetached` (Bun.spawn vs `child_process`), isolated to one function.
 
-CI runs the entire suite twice — once on Node, once on Bun — and the Postgres-gated suites (storage contract + server integration) additionally run against a real Postgres.
+CI runs the entire suite twice — once on Node, once on Bun. The storage/registry contract suites and the server integration tests run on a libSQL `:memory:` database, so there is no external infrastructure to provision.
 
 ---
 
@@ -92,7 +92,7 @@ Every ingested row's `user` is **overwritten with the authenticated member's nam
 
 ### Tenancy — one relational database, `group_id` per group
 
-The server runs on **Postgres or libSQL** — one `DATABASE_URL`, picked by `resolveServerBackend` (a `postgres://` URL is Postgres, anything else is libSQL; `CCSHARE_DB_DRIVER` forces it). Both adapters implement the **same relational model**: one shared database where every ledger row carries a `group_id` that references the `groups` table. The server is multi-tenant but the `Storage` boundary never learns that — each group is served by a `Storage` instance **scoped to its `group_id`** (see §9), composed into the very same core pieces used everywhere: `StorageIngestSink` + `StorageViewSource`. So ingest semantics, attribution, watermark caching, migration, and pruning are one code path across both databases. The **registry** (groups / members / tokens) lives in ordinary tables in the same database, behind core's `Registry` interface implemented next to each `Database` — `apps/server` contains no SQL. There is **one connection pool per process** (`CCSHARE_PG_POOL_MAX`, default 10, for Postgres; a single libSQL client otherwise): the `Database` owns it, runs the global DDL at boot, and vends `group_id`-scoped `Storage` facades via `forGroup`. Live tenants are LRU-capped in a connection-free `TenantCache` — the cap bounds per-tenant view-cache memory, not connections; a facade holds no pool of its own.
+The server runs on **libSQL** — one `DATABASE_URL` (a `file:` path or a remote `libsql://` Turso URL, plus `CCSHARE_DB_AUTH_TOKEN` for the latter), read by `resolveServerBackend`. The relational model is one shared database where every ledger row carries a `group_id` that references the `groups` table. The server is multi-tenant but the `Storage` boundary never learns that — each group is served by a `Storage` instance **scoped to its `group_id`** (see §9), composed into the very same core pieces used everywhere: `StorageIngestSink` + `StorageViewSource`. So ingest semantics, attribution, watermark caching, migration, and pruning are one code path. The **registry** (groups / members / tokens) lives in ordinary tables in the same database, as the concrete `LibsqlRegistry` on `LibsqlDatabase` — `apps/server` contains no SQL. There is **one libSQL client per process**: `LibsqlDatabase` owns it, runs the global DDL at boot, and vends `group_id`-scoped `Storage` facades via `forGroup`. Live tenants are LRU-capped in a connection-free `TenantCache` — the cap bounds per-tenant view-cache memory, not connections; a facade holds no client of its own.
 
 ### The API surface
 

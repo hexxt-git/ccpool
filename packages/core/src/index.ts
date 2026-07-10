@@ -2,13 +2,12 @@
 
 export * from "./types.js";
 export * from "./storage/storage.js";
-export { MemoryStorage } from "./storage/memory.js";
 
-// the one-physical-database boundary: registry + group-scoped ledgers
-export type { Database } from "./storage/database.js";
+// Registry data types + the atomic-signup conflict error. The registry itself is
+// implemented concretely by the server's backend (@ccshare/storage-libsql); core
+// only owns the shared row/error shapes and the group-scoped `Storage` boundary.
 export { RegistryConflictError } from "./registry/registry.js";
-export type { CreateGroupInput, GroupRow, MemberRow, Registry } from "./registry/registry.js";
-export { MemoryDatabase } from "./registry/memory.js";
+export type { CreateGroupInput, GroupRow, MemberRow } from "./registry/registry.js";
 export { attributeShares, CAP_WINDOW_MS } from "./state/shares.js";
 export { summarizeMembers, isActive, ACTIVE_WINDOW_MS } from "./state/members.js";
 export type { MemberSummary } from "./state/members.js";

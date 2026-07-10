@@ -5,13 +5,16 @@ import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
 import { CcshareClient, HttpIngestSink, HttpViewSource } from "@ccshare/core";
 import { Daemon } from "@ccshare/daemon";
-import { makeApp, makeMemoryDeps } from "../src/app.js";
+import { makeApp } from "../src/app.js";
+import type { ServerDeps } from "../src/deps.js";
+import { makeTestDeps } from "./helpers.js";
 
 /**
  * The full client-to-server loop over a real socket, zero infrastructure: a
  * daemon observes a fixture transcript + a stubbed usage poll, writes through
- * HttpIngestSink to the served app (memory deps), and HttpViewSource reads the
- * attributed view back — proving daemon → server → view end to end.
+ * HttpIngestSink to the served app (a libSQL `:memory:` database), and
+ * HttpViewSource reads the attributed view back — daemon → server → view end to
+ * end.
  */
 
 // Anchored to the current time, not a fixed date: the server rolls members up
@@ -22,9 +25,11 @@ const ACCOUNT = "acc-e2e-1";
 
 let server: ServerType;
 let baseUrl: string;
+let deps: ServerDeps;
 
 beforeAll(async () => {
-  const app = makeApp(makeMemoryDeps());
+  deps = await makeTestDeps();
+  const app = makeApp(deps);
   await new Promise<void>((resolve) => {
     server = serve({ fetch: app.fetch, port: 0 }, (info) => {
       baseUrl = `http://127.0.0.1:${info.port}`;
@@ -33,8 +38,10 @@ beforeAll(async () => {
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   server.close();
+  await deps.tenants.close();
+  await deps.db.close();
   delete process.env.CLAUDE_CONFIG_DIR;
 });
 

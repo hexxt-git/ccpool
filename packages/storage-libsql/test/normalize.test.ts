@@ -10,17 +10,9 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl(":memory:")).toBe(":memory:");
   });
 
-  // ── remote schemes pass through ─────────────────────────────────────────────
+  // ── remote scheme passes through ────────────────────────────────────────────
   it("passes libsql:// through unchanged", () => {
     expect(normalizeUrl("libsql://team.turso.io")).toBe("libsql://team.turso.io");
-  });
-
-  it("passes postgres:// through unchanged", () => {
-    expect(normalizeUrl("postgres://user:pass@host/db")).toBe("postgres://user:pass@host/db");
-  });
-
-  it("passes postgresql:// through unchanged", () => {
-    expect(normalizeUrl("postgresql://user:pass@host/db")).toBe("postgresql://user:pass@host/db");
   });
 
   // ── tilde expansion ─────────────────────────────────────────────────────────

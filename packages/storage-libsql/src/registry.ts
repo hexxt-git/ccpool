@@ -6,7 +6,6 @@ import {
   type CreateGroupInput,
   type GroupRow,
   type MemberRow,
-  type Registry,
 } from "@ccshare/core";
 
 /**
@@ -26,7 +25,7 @@ function isConstraintViolation(err: unknown): boolean {
  * `users` roster / `writeSeq`): identity and provisioning commit or roll back
  * together.
  */
-export class LibsqlRegistry implements Registry {
+export class LibsqlRegistry {
   constructor(private readonly client: Client) {}
 
   async getGroupByAccount(accountId: string): Promise<GroupRow | null> {

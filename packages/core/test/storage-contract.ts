@@ -3,8 +3,9 @@ import { emptyBatch, SCHEMA_VERSION, type DbInspection, type Storage } from "../
 import type { TickBatch } from "../src/types.js";
 
 /**
- * Shared Storage contract. Run against every adapter (memory, libsql, postgres)
- * to prove both swappability and the clean-DB enforcement (§15).
+ * The `Storage` contract for the one adapter (`LibsqlStorage`): proves its
+ * correctness, the clean-DB enforcement (§15), and — via `pair()` — that
+ * `group_id` isolates two groups sharing one physical database.
  */
 export interface ContractHarness {
   name: string;

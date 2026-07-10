@@ -1,8 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { MemoryStorage } from "../src/storage/memory.js";
+import { afterEach, describe, it, expect } from "vitest";
 import { emptyBatch } from "../src/storage/storage.js";
 import { StorageIngestSink } from "../src/backend/storage.js";
 import type { CapKind, TickBatch, UsageSample } from "../src/types.js";
+import { closeStorages, freshStorage } from "./libsql.js";
+
+afterEach(closeStorages);
 
 const sample = (cap: CapKind, pct: number, capturedAt: string): UsageSample => ({
   cap,
@@ -13,7 +15,7 @@ const sample = (cap: CapKind, pct: number, capturedAt: string): UsageSample => (
 const at = (m: number) => `2026-06-29T10:${String(m).padStart(2, "0")}:00.000Z`;
 
 async function freshSink() {
-  const s = new MemoryStorage();
+  const s = await freshStorage();
   await s.initializeSchema("acc");
   const sink = new StorageIngestSink(s);
   await sink.bootstrap();

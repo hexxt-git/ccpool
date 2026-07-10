@@ -1,9 +1,9 @@
 /**
- * The registry: groups, members, and bearer tokens — the server-owned identity
- * tables that live in the same physical database as the per-group ledgers (the
- * ledger tables carry a `group_id` referencing `groups(id)`). Core owns the
- * interface; each storage package implements it over its one shared pool/client
- * so the server never writes SQL.
+ * The registry's shared shapes: groups, members, and the atomic-signup inputs —
+ * the server-owned identity tables that live in the same physical database as the
+ * per-group ledgers (the ledger tables carry a `group_id` referencing
+ * `groups(id)`). Core owns these row/input/error shapes; the concrete registry
+ * (the SQL) lives in `@ccshare/storage-libsql` on `LibsqlDatabase`.
  *
  * The registry stores opaque hash strings only — password (scrypt) and token
  * (sha256) hashing live in the server; nothing here ever sees a secret.
@@ -50,40 +50,11 @@ export interface CreateGroupInput {
   tokenHash: string;
 }
 
-/**
- * Signup flows are single transactions: every value (ids, hashes, timestamps)
- * is computable before the write, so each composed op is one atomic statement
- * list — Postgres `sql.begin`, libSQL `batch(..., "write")`, memory
- * validate-then-apply. The composed ops deliberately cross into the ledger
- * tables (the group's `ccshare_meta` row, the `users` roster row, the
- * `writeSeq` bump): provisioning atomically with identity is the point.
- */
-export interface Registry {
-  getGroupByAccount(accountId: string): Promise<GroupRow | null>;
-  getMember(groupId: string, name: string): Promise<MemberRow | null>;
-  /** One indexed lookup: token hash -> member + group, or null. */
-  resolveToken(tokenHash: string): Promise<{ member: MemberRow; group: GroupRow } | null>;
-  /** A lone token mint (login / existing-member rejoin) — single statement. */
-  insertToken(tokenHash: string, memberId: string): Promise<void>;
-  /** Update lastUsedAt (callers throttle; this is just the write). */
-  touchToken(tokenHash: string): Promise<void>;
-  /**
-   * ONE transaction: the groups row + this group's `ccshare_meta` (bound to
-   * `accountId`) + the first member + its `users` roster row + its token.
-   * Throws {@link RegistryConflictError}("group-exists") when UNIQUE(accountId)
-   * loses the create race; the transaction rolls back and nothing is written.
-   */
-  createGroupWithMember(input: CreateGroupInput): Promise<{ group: GroupRow; member: MemberRow }>;
-  /**
-   * ONE transaction: the member + its `users` roster row + the group's
-   * `writeSeq` bump + its token. Throws
-   * {@link RegistryConflictError}("member-exists") when UNIQUE(groupId, name)
-   * loses a same-name race; nothing is written.
-   */
-  addMemberWithToken(
-    groupId: string,
-    name: string,
-    passwordHash: string,
-    tokenHash: string
-  ): Promise<MemberRow>;
-}
+// The concrete registry (`LibsqlRegistry` in `@ccshare/storage-libsql`) exposes:
+//   getGroupByAccount, getMember, resolveToken, insertToken, touchToken, and the
+//   two composed atomic-signup ops createGroupWithMember / addMemberWithToken.
+// Each composed op is one `batch(..., "write")` — every value is known up front —
+// and deliberately crosses into the ledger tables (the group's `ccshare_meta`
+// row, the `users` roster row, the `writeSeq` bump): provisioning atomically with
+// identity is the point. A lost UNIQUE race throws {@link RegistryConflictError}
+// and writes nothing.

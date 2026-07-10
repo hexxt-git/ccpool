@@ -1,16 +1,17 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { RegistryConflictError, type CreateGroupInput, type Database } from "../src/index.js";
+import { RegistryConflictError, type CreateGroupInput } from "../src/index.js";
+import type { LibsqlDatabase } from "@ccshare/storage-libsql";
 
 /**
- * Shared Registry/Database contract. Run against every backend (memory, libsql,
- * postgres) to prove the composed signup ops are atomic — a lost race writes
- * NOTHING (no group, no member, no token, no roster row) — and that the
- * registry provisions the group's ledger in the same transaction.
+ * The registry/database contract for `LibsqlDatabase` — the one backend. Proves
+ * the composed signup ops are atomic (a lost race writes NOTHING — no group,
+ * member, token, or roster row) and that the registry provisions the group's
+ * ledger in the same transaction.
  */
 export interface RegistryContractHarness {
   name: string;
-  /** A fresh, initialized (init() already run) Database. */
-  fresh(): Promise<Database>;
+  /** A fresh, initialized (init() already run) database. */
+  fresh(): Promise<LibsqlDatabase>;
 }
 
 function input(overrides: Partial<CreateGroupInput> = {}): CreateGroupInput {
@@ -26,7 +27,7 @@ function input(overrides: Partial<CreateGroupInput> = {}): CreateGroupInput {
 
 export function runRegistryContract(h: RegistryContractHarness): void {
   describe(`Registry contract: ${h.name}`, () => {
-    const opened: Database[] = [];
+    const opened: LibsqlDatabase[] = [];
     const open = async () => {
       const db = await h.fresh();
       opened.push(db);

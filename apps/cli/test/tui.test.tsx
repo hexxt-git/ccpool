@@ -4,7 +4,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { render } from "ink-testing-library";
-import { emptyBatch, MemoryStorage, StorageViewSource, type Config } from "@ccshare/core";
+import { emptyBatch, StorageViewSource, type Config } from "@ccshare/core";
+import { LibsqlDatabase } from "@ccshare/storage-libsql";
 import { App } from "../src/tui/App.js";
 import { Root } from "../src/tui/Root.js";
 
@@ -12,6 +13,7 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let ccshareDir: string;
 let cfg: Config;
+let db: LibsqlDatabase | undefined;
 
 beforeEach(() => {
   ccshareDir = mkdtempSync(join(tmpdir(), "ccshare-tui-"));
@@ -25,13 +27,17 @@ beforeEach(() => {
   };
 });
 
-afterEach(() => {
+afterEach(async () => {
   delete process.env.CCSHARE_DIR;
+  await db?.close();
+  db = undefined;
 });
 
 describe("TUI App", () => {
   it("renders the tank header from the shared view", async () => {
-    const storage = new MemoryStorage();
+    db = new LibsqlDatabase(":memory:");
+    await db.init();
+    const storage = db.forGroup("g");
     await storage.initializeSchema();
     await storage.recordBatch({
       ...emptyBatch(),

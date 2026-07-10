@@ -27,7 +27,7 @@ The whole system is a **read-only observer plus a shared ledger**. It never sits
                       └────────────┼─────────────────────────┼─────────────────────────────┘
                                    │                          │  HTTP
                                    │                 ccshare server (§13)
-                                   │            Postgres | libSQL — one shared DB,
+                                   │            libSQL — one shared DB,
                                    │            every row scoped by group_id
                                    │                          │
                   statusline ◄─────┘    tui / status ◄─ ViewSource.fetchView() → SharedView
@@ -46,7 +46,7 @@ The pipeline, in the order data flows through the system:
 1. **[Observation](algorithm/observation.md)** — identity & the OAuth token, polling the tank, reset detection, JSONL ingest, the daemon tick, `state.json`. _(§1–§6)_
 2. **[Attribution](algorithm/attribution.md)** — the delta-based per-person split, activity markers, no budgets, names & `unknown`. _(§7, §10, §11)_
 3. **[The view model](algorithm/views.md)** — what `status` and `tui` render, and the watermark cache that makes a 2s refresh cheap. _(§8)_
-4. **[Storage and the server](algorithm/storage-and-server.md)** — the swappable `Storage` boundary, runtime portability, and multi-tenant server with the two-password model. _(§9, §12, §13)_
+4. **[Storage and the server](algorithm/storage-and-server.md)** — the `Storage` boundary, runtime portability, and multi-tenant server with the two-password model. _(§9, §12, §13)_
 
 See also [DESIGN.md](DESIGN.md) and [RESOURCE_UTILIZATION.md](RESOURCE_UTILIZATION.md).
 

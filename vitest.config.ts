@@ -10,7 +10,6 @@ export default defineConfig({
     alias: {
       "@ccshare/core": r("./packages/core/src/index.ts"),
       "@ccshare/storage-libsql": r("./packages/storage-libsql/src/index.ts"),
-      "@ccshare/storage-postgres": r("./packages/storage-postgres/src/index.ts"),
       "@ccshare/daemon": r("./packages/daemon/src/index.ts"),
     },
   },

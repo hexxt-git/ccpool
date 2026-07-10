@@ -223,20 +223,18 @@ used what and leaves it to the group to coordinate how much anyone should use.
 
 The server is open too, and a group can run its own instead of the default host.
 It's multi-tenant (many groups on one server, each group's ledger isolated by a
-`group_id` in one shared database) and runs on **Postgres or libSQL** — one
-`DATABASE_URL`:
+`group_id` in one shared database) and runs on **libSQL** — one `DATABASE_URL`,
+either a local SQLite file or a remote `libsql://` (Turso):
 
 ```bash
-# Postgres
-DATABASE_URL=postgres://user:pass@host/db PORT=8787 node apps/server/dist/index.js
-
-# libSQL (a local file, or libsql://… + CCSHARE_DB_AUTH_TOKEN for Turso)
+# local file
 DATABASE_URL=file:/var/lib/ccshare/server.db PORT=8787 node apps/server/dist/index.js
+
+# remote libSQL / Turso
+DATABASE_URL=libsql://your-db.turso.io CCSHARE_DB_AUTH_TOKEN=… PORT=8787 node apps/server/dist/index.js
 ```
 
-The driver is inferred from `DATABASE_URL` (a `postgres://` URL is Postgres,
-anything else is libSQL); `CCSHARE_DB_DRIVER=postgres|libsql` forces it. Point CLIs
-at your server with `CCSHARE_SERVER_URL=https://your-host` when running
+Point CLIs at your server with `CCSHARE_SERVER_URL=https://your-host` when running
 `ccshare init`. Run it behind TLS — the CLI refuses plain `http://` for anything
 but localhost, because the bearer token rides on every request. Passwords are
 stored as salted scrypt hashes and tokens as sha256 hashes; the server never keeps
@@ -247,12 +245,11 @@ a usable credential.
 ```
 packages/
   core/               # runtime-agnostic domain logic: Storage + IngestSink/ViewSource
-  storage-libsql/     # libSQL adapter — server-side (file: and libsql://)
-  storage-postgres/   # Postgres adapter — server-side
+  storage-libsql/     # the libSQL backend — server-side, the only DB code (file: and libsql://)
   daemon/             # the background observer (poll + jsonl + state.json)
 apps/
   cli/                # Commander + Ink CLI (HTTP client only — never opens a DB)
-  server/             # multi-tenant server (Hono; Postgres or libSQL)
+  server/             # multi-tenant server (Hono; libSQL)
   web/                # marketing site (Astro)
 ```
 
@@ -270,21 +267,9 @@ pnpm test         # run the suite on Node
 pnpm test:bun     # run the same suite on Bun
 ```
 
-The full suite runs on both Node and Bun in CI, and the storage contract suite
-runs against the memory, libSQL, and Postgres adapters.
-
-The Postgres-gated suites (the storage-postgres contract and the server
-integration tests) only run when `CCSHARE_TEST_PG_URL` is set. The `Makefile`
-spins a throwaway Docker Postgres for them on port 5433 (isolated from any local
-Postgres on 5432):
-
-```bash
-make db-up        # start the dev Postgres (waits until ready)
-make test-pg      # db-up, then run the PG-gated suites against it
-make db-reset     # wipe it clean
-make db-down      # stop and remove it
-make db-psql      # psql shell · make db-url prints the connection URL
-```
+The full suite runs on both Node and Bun in CI. The storage and registry contract
+suites and the server integration tests run on a libSQL `:memory:` database, so the
+whole suite is self-contained — no database to provision, nothing to spin up.
 
 ---
 

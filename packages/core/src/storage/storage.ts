@@ -16,8 +16,9 @@ import type {
  *
  * v1 — the relational baseline. One physical database holds every group's ledger;
  * a `group_id` column on every table (and in the composite keys/indexes) scopes
- * the rows to a group, so a single Postgres or libSQL database backs the whole
- * multi-tenant server. Tables: `ccshare_meta` (per group — the account-binding
+ * the rows to a group, so a single libSQL database (`file:` or a remote
+ * `libsql://` Turso) backs the whole multi-tenant server. Tables: `ccshare_meta`
+ * (per group — the account-binding
  * `accountId`, the change-detection `writeSeq`, `schemaVersion`), `users`,
  * `usage_samples`, `message_usage`, `usage_markers`, `reset_events`. Samples and
  * resets dedup on `(group_id, cap, capturedAt)` / `(group_id, cap, at)`, messages
@@ -34,10 +35,12 @@ export const SCHEMA_VERSION = 1;
 export const DEFAULT_GROUP_ID = "default";
 
 /**
- * The one boundary that must stay strict: adapters are interchangeable behind
- * this interface. Async even where local SQLite is synchronous, so a remote
- * adapter fits unchanged. Adapters are dumb — rows in, rows out, no business
- * logic; attribution and view assembly live above this line.
+ * The one boundary that must stay strict — the seam core's backend pieces
+ * (`StorageIngestSink`/`StorageViewSource`/`LedgerWindow`) are written against,
+ * implemented by `LibsqlStorage` in `@ccshare/storage-libsql`. Async even where
+ * local SQLite is synchronous, so a remote `libsql://` (Turso) fits unchanged.
+ * The adapter is dumb — rows in, rows out, no business logic; attribution and
+ * view assembly live above this line.
  *
  * **Every instance is scoped to one `groupId`** (bound at construction, injected
  * into every query as `group_id`). All rows a single instance reads or writes

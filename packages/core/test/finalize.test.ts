@@ -1,8 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { MemoryStorage } from "../src/storage/memory.js";
+import { afterEach, describe, it, expect } from "vitest";
 import { emptyBatch } from "../src/storage/storage.js";
 import { StorageIngestSink } from "../src/backend/storage.js";
 import type { CapKind, TickBatch, UsageSample } from "../src/types.js";
+import { closeStorages, freshStorage } from "./libsql.js";
+
+afterEach(closeStorages);
 
 const sample = (cap: CapKind, pct: number, capturedAt: string): UsageSample => ({
   cap,
@@ -23,7 +25,7 @@ const msg = (uuid: string, user: string, timestamp: string) => ({
 
 describe("window finalization → history", () => {
   it("freezes a closed window past the grace, attributing its shares", async () => {
-    const s = new MemoryStorage();
+    const s = await freshStorage();
     await s.initializeSchema("acc");
     let clock = Date.parse("2026-06-29T10:00:00.000Z");
     const sink = new StorageIngestSink(s, {

@@ -1,15 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   computeSharedView,
   LedgerWindow,
-  MemoryStorage,
   StorageIngestSink,
   StorageViewSource,
   type CapKind,
   type SharedView,
+  type Storage,
   type TickBatch,
 } from "../src/index.js";
 import { emptyBatch } from "../src/storage/storage.js";
+import { closeStorages, freshStorage } from "./libsql.js";
 
 /**
  * The LedgerWindow equivalence suite: the windowed view path (hydrate once,
@@ -18,6 +19,8 @@ import { emptyBatch } from "../src/storage/storage.js";
  * exactly; only array order within a view is normalized (attribution is
  * order-independent for distinct timestamps, which every fixture uses).
  */
+
+afterEach(closeStorages);
 
 const NOW = Date.parse("2026-06-29T20:00:00.000Z");
 const HOUR = 3600_000;
@@ -87,7 +90,7 @@ function normalized(v: SharedView): SharedView {
 
 async function expectEquivalent(
   source: StorageViewSource,
-  storage: MemoryStorage,
+  storage: Storage,
   now: number
 ): Promise<void> {
   const windowed = await source.fetchView(now);
@@ -98,14 +101,14 @@ async function expectEquivalent(
 }
 
 interface Composed {
-  storage: MemoryStorage;
+  storage: Storage;
   window: LedgerWindow;
   sink: StorageIngestSink;
   source: StorageViewSource;
 }
 
 function compose(
-  storage = new MemoryStorage(),
+  storage: Storage,
   sinkOpts: { pruneIntervalMs?: number; now?: () => number } = {}
 ): Composed {
   const window = new LedgerWindow(storage);
@@ -121,7 +124,7 @@ const meta = { at: at(0), accountId: "acc-1" };
 
 describe("LedgerWindow equivalence with the full storage scan", () => {
   it("hydrate-only: a pre-existing ledger reads identically at several nows", async () => {
-    const { storage, source } = compose();
+    const { storage, source } = compose(await freshStorage());
     await storage.initializeSchema("acc-1");
     await storage.upsertUser("sam");
     await storage.upsertUser("alex");
@@ -133,7 +136,7 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
   });
 
   it("hydrate + append: ingested ticks land in both paths identically", async () => {
-    const { storage, sink, source } = compose();
+    const { storage, sink, source } = compose(await freshStorage());
     await storage.initializeSchema("acc-1");
     const [first, ...rest] = seedBatches();
     await sink.ingest(first!, meta); // window idle — dropped, hydration covers it
@@ -146,7 +149,7 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
   });
 
   it("a retried batch with mutated values keeps the first write, like the DB", async () => {
-    const { storage, sink, source } = compose();
+    const { storage, sink, source } = compose(await freshStorage());
     await storage.initializeSchema("acc-1");
     const original = batchOf({
       samples: [sample("five_hour", 10, 2 * HOUR), sample("five_hour", 25, 1 * HOUR)],
@@ -169,7 +172,7 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
 
   it("prune parity: the window drops exactly what the DB drops", async () => {
     let t = NOW;
-    const { storage, sink, source } = compose(new MemoryStorage(), {
+    const { storage, sink, source } = compose(await freshStorage(), {
       pruneIntervalMs: 1000,
       now: () => t,
     });
@@ -192,7 +195,7 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
   });
 
   it("eviction/re-hydrate: a fresh window over the same storage reads identically", async () => {
-    const { storage, sink, source } = compose();
+    const { storage, sink, source } = compose(await freshStorage());
     await storage.initializeSchema("acc-1");
     for (const b of seedBatches()) await sink.ingest(b, meta);
     await expectEquivalent(source, storage, NOW);
@@ -205,15 +208,23 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
   it("append-during-hydration: a batch racing the hydration read is buffered, not lost", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    class GatedStorage extends MemoryStorage {
-      override async getUsageSamplesSince(since: string) {
-        await gate;
-        return super.getUsageSamplesSince(since);
-      }
-    }
-    const storage = new GatedStorage();
+    const inner = await freshStorage();
+    await inner.initializeSchema("acc-1");
+    // Gate the hydration read (getUsageSamplesSince) so a concurrent ingest can
+    // land mid-hydration; every other call passes straight through to storage.
+    const storage = new Proxy(inner, {
+      get(target, prop, recv) {
+        if (prop === "getUsageSamplesSince") {
+          return async (since: string) => {
+            await gate;
+            return target.getUsageSamplesSince(since);
+          };
+        }
+        const v = Reflect.get(target, prop, recv);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
     const { sink, source } = compose(storage);
-    await storage.initializeSchema("acc-1");
     const [first, second, ...rest] = seedBatches();
     await storage.recordBatch(first!);
 
@@ -230,7 +241,7 @@ describe("LedgerWindow equivalence with the full storage scan", () => {
   });
 
   it("idle-drop: a tick ingested before any view read is not lost", async () => {
-    const { storage, sink, source } = compose();
+    const { storage, sink, source } = compose(await freshStorage());
     await storage.initializeSchema("acc-1");
     for (const b of seedBatches()) await sink.ingest(b, meta); // window idle throughout
     await expectEquivalent(source, storage, NOW); // first read hydrates everything

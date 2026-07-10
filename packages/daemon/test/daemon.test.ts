@@ -4,23 +4,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   ApiRequestError,
-  MemoryStorage,
   readCredentials as coreReadCredentials,
   StorageIngestSink,
   type IngestMeta,
   type IngestSink,
   type LocalState,
+  type Storage,
   type TickBatch,
 } from "@ccshare/core";
+import { LibsqlDatabase } from "@ccshare/storage-libsql";
 import { Daemon, type DaemonDeps } from "../src/daemon.js";
 import { acquireLock, AlreadyRunningError, daemonPaths, reassertLock } from "../src/lifecycle.js";
 import { existsSync, unlinkSync } from "node:fs";
 
 const NOW = Date.parse("2026-06-29T20:00:00.000Z");
 
+// Each setup() opens its own libSQL `:memory:` database (per-client isolation);
+// afterEach closes them all so no client leaks and hangs vitest.
+const openDbs: LibsqlDatabase[] = [];
+
 interface Harness {
   deps: DaemonDeps;
-  storage: MemoryStorage;
+  storage: Storage;
   sink: StorageIngestSink;
   stateFile: string;
   configDir: string;
@@ -31,7 +36,7 @@ interface Harness {
   fetchCalls(): number;
 }
 
-function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Harness {
+async function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Promise<Harness> {
   const root = mkdtempSync(join(tmpdir(), "ccshare-daemon-"));
   const configDir = join(root, "config");
   const ccshareDir = join(root, "ccshare");
@@ -56,7 +61,10 @@ function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Harness {
   let clock = NOW;
   const now = () => clock;
 
-  const storage = new MemoryStorage();
+  const db = new LibsqlDatabase(":memory:");
+  await db.init();
+  openDbs.push(db);
+  const storage = db.forGroup("g");
   const sink = new StorageIngestSink(storage, { now });
   const paths = daemonPaths(ccshareDir, configDir);
 
@@ -92,9 +100,10 @@ function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Harness {
 
 const readState = (file: string): LocalState => JSON.parse(readFileSync(file, "utf8"));
 
-afterEach(() => {
+afterEach(async () => {
   delete process.env.CLAUDE_CONFIG_DIR;
   vi.restoreAllMocks();
+  await Promise.all(openDbs.splice(0).map((db) => db.close().catch(() => {})));
 });
 
 /** Reach the private startup step (sink bootstrap: binding + reset seed). */
@@ -104,7 +113,7 @@ async function bootstrap(daemon: Daemon): Promise<void> {
 
 describe("Daemon.tick", () => {
   it("polls, records samples, and writes state.json atomically", async () => {
-    const h = setup({
+    const h = await setup({
       five_hour: { utilization: 42, resets_at: "2026-06-29T22:00:00Z" },
       seven_day: { utilization: 68, resets_at: "2026-07-05T22:00:00Z" },
     });
@@ -124,7 +133,7 @@ describe("Daemon.tick", () => {
   });
 
   it("latches account.authRejected and never marks a clean sync when the sink rejects the bearer (401)", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     // A sink whose bootstrap is fine but whose ingest is always auth-rejected —
     // the shared-mode server returning 401 for a revoked/rotated token (§13).
     const rejectingSink: IngestSink = {
@@ -145,7 +154,7 @@ describe("Daemon.tick", () => {
   });
 
   it("freezes lastSyncAt when the usage poll fails (429) even as state.json keeps being written", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     let fail = false;
     const fetchImpl = vi.fn(async () =>
       fail
@@ -173,7 +182,7 @@ describe("Daemon.tick", () => {
   });
 
   it("records a reset when pct drops across ticks", async () => {
-    const h = setup({ five_hour: { utilization: 90, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 90, resets_at: null } });
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // 90%
     h.setBody({ five_hour: { utilization: 3, resets_at: null } });
@@ -183,21 +192,21 @@ describe("Daemon.tick", () => {
   });
 
   it("skips the poll and flags expiry when the token is expired", async () => {
-    const h = setup({ five_hour: { utilization: 1, resets_at: null } }, NOW - 1);
+    const h = await setup({ five_hour: { utilization: 1, resets_at: null } }, NOW - 1);
     await new Daemon(h.deps).tick();
     expect(h.fetchCalls()).toBe(0);
     expect(readState(h.stateFile).account.tokenExpired).toBe(true);
   });
 
   it("sends ONE batch per tick (samples + messages together)", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     const spy = vi.spyOn(h.storage, "recordBatch");
     await new Daemon(h.deps).tick();
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-send an unchanged tank, but a rise still ingests (report-on-change)", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // first reading: 42 is sent
 
@@ -216,7 +225,7 @@ describe("Daemon.tick", () => {
   });
 
   it("keeps a failed batch and merges it into the next tick (no dropped rows)", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     let failNext = true;
     const flaky: IngestSink = {
       bootstrap: () => h.sink.bootstrap(),
@@ -248,7 +257,7 @@ describe("Daemon schema auto-migration", () => {
   // the daemon must never migrate it. (The forward-migration machinery is retained
   // for future versions; there are no historical steps to exercise.)
   it("does not migrate a current DB", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-1");
     const spy = vi.spyOn(h.storage, "migrate");
     await bootstrap(new Daemon(h.deps));
@@ -258,7 +267,7 @@ describe("Daemon schema auto-migration", () => {
 
 describe("Daemon account-conflict guard", () => {
   it("halts ledger writes when the local account differs from the DB's binding", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER"); // ledger bound to a different account
     const daemon = new Daemon(h.deps); // local account is acc-1 (from .claude.json)
     await bootstrap(daemon);
@@ -272,7 +281,7 @@ describe("Daemon account-conflict guard", () => {
   });
 
   it("does not ingest anything during a conflict", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER");
     const spy = vi.spyOn(h.storage, "recordBatch");
     const daemon = new Daemon(h.deps);
@@ -282,7 +291,7 @@ describe("Daemon account-conflict guard", () => {
   });
 
   it("flags the conflict when the sink itself refuses the write (server-side 409)", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER");
     const daemon = new Daemon(h.deps);
     // The daemon never learns the binding — only the sink does (like a server 409).
@@ -294,7 +303,7 @@ describe("Daemon account-conflict guard", () => {
   });
 
   it("writes normally when the local account matches the binding", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-1"); // matches .claude.json
     const daemon = new Daemon(h.deps);
     await bootstrap(daemon);
@@ -305,7 +314,7 @@ describe("Daemon account-conflict guard", () => {
   });
 
   it("does not enforce against an unbound ledger", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema(); // unbound (accountId null)
     const daemon = new Daemon(h.deps);
     await bootstrap(daemon);
@@ -341,7 +350,7 @@ describe("Daemon activity markers", () => {
   }
 
   it("marks an unexplained local rise as the recently-active user's usage", async () => {
-    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // baselines the reader + records 40%
 
@@ -360,7 +369,7 @@ describe("Daemon activity markers", () => {
   });
 
   it("leaves a rise as unknown when the machine has had no recent activity", async () => {
-    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // baseline, 40%
     h.setBody({ five_hour: { utilization: 55, resets_at: null } });
@@ -369,7 +378,7 @@ describe("Daemon activity markers", () => {
   });
 
   it("does not mark when a message already covers the rise", async () => {
-    const h = setup({ five_hour: { utilization: 40, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
     const daemon = new Daemon(h.deps);
     await daemon.tick(); // baseline
     // activity and the rise land in the same tick -> the message covers it
@@ -457,7 +466,7 @@ describe("continuous single-instance ownership (reassertLock)", () => {
 
 describe("a duplicate daemon does no work and stops itself", () => {
   it("surrenders at the top of the tick without polling, ingesting, or writing state", async () => {
-    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     const before = h.fetchCalls();
     const daemon = new Daemon({ ...h.deps, ensureOwner: () => false });
     const res = await daemon.tick();

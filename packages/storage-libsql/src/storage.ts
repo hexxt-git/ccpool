@@ -92,7 +92,6 @@ export class LibsqlStorage implements Storage {
            group_id TEXT NOT NULL, cap TEXT NOT NULL, windowStart TEXT NOT NULL,
            windowEnd TEXT NOT NULL, overall REAL NOT NULL, closedAt TEXT NOT NULL,
            PRIMARY KEY (group_id, cap, windowStart))`,
-        `CREATE INDEX IF NOT EXISTS idx_history_windows_start ON history_windows (group_id, cap, windowStart)`,
         `CREATE TABLE IF NOT EXISTS history_shares (
            group_id TEXT NOT NULL, cap TEXT NOT NULL, windowStart TEXT NOT NULL,
            user TEXT NOT NULL, pct REAL NOT NULL,

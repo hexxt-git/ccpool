@@ -1,12 +1,12 @@
-import { LedgerWindow, StorageIngestSink, StorageViewSource, type Database } from "@ccshare/core";
+import { LedgerWindow, StorageIngestSink, StorageViewSource } from "@ccshare/core";
+import type { LibsqlDatabase } from "@ccshare/storage-libsql";
 import type { GroupRow, Tenant, TenantProvider } from "./deps.js";
 
 /**
- * Driver-agnostic tenancy. Every group's ledger is a group-scoped `Storage`
- * facade over the ONE pool/client the `Database` owns — a tenant holds no
- * connection of its own, so opening one is cheap and evicting one is a plain
- * map delete (an in-flight request keeps working; its facade still points at
- * the shared pool).
+ * Tenancy over the one shared client. Every group's ledger is a group-scoped
+ * `Storage` facade the `LibsqlDatabase` hands out — a tenant holds no connection
+ * of its own, so opening one is cheap and evicting one is a plain map delete (an
+ * in-flight request keeps working; its facade still points at the shared client).
  *
  * The LRU cap bounds per-tenant memory (the view cache), not connections.
  */
@@ -21,7 +21,7 @@ interface TenantEntry {
 export class TenantCache implements TenantProvider {
   private tenants = new Map<string, TenantEntry>();
 
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: LibsqlDatabase) {}
 
   async get(group: GroupRow): Promise<Tenant> {
     const entry = this.open(group);

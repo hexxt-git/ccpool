@@ -1,14 +1,15 @@
-import type { Database, GroupRow, IngestSink, Registry, StorageViewSource } from "@ccshare/core";
+import type { GroupRow, IngestSink, StorageViewSource } from "@ccshare/core";
+import type { LibsqlDatabase, LibsqlRegistry } from "@ccshare/storage-libsql";
 
 /**
- * The server's injectable dependencies. Routes in app.ts are written against
- * these interfaces so the whole HTTP surface is testable with the in-memory
- * Database (memory-deps.ts); production wires PostgresDatabase/LibsqlDatabase
- * (backend.ts). All SQL lives in the storage packages behind the core-owned
- * `Database`/`Registry` interfaces — the server only routes and authenticates.
+ * The server's injectable dependencies. Routes in app.ts take `ServerDeps`, so
+ * tests wire a libSQL `:memory:` database (test/helpers.ts) with the same
+ * composition production uses (backend.ts). All SQL lives in
+ * `@ccshare/storage-libsql` on `LibsqlDatabase`/`LibsqlRegistry` — the server
+ * only routes and authenticates.
  */
 
-export type { GroupRow, MemberRow, Registry } from "@ccshare/core";
+export type { GroupRow, MemberRow } from "@ccshare/core";
 
 /** One group's composed backend: a group-scoped Storage behind the core boundary. */
 export interface Tenant {
@@ -24,9 +25,9 @@ export interface TenantProvider {
 }
 
 export interface ServerDeps {
-  /** The one shared physical database (one pool/client per process). */
-  db: Database;
+  /** The one shared physical database (one client per process). */
+  db: LibsqlDatabase;
   /** Always `db.registry` — a field for the routes' ergonomics. */
-  registry: Registry;
+  registry: LibsqlRegistry;
   tenants: TenantProvider;
 }

@@ -1,16 +1,11 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { runRegistryContract } from "../../core/test/registry-contract.js";
 import { LibsqlDatabase } from "../src/index.js";
 
-const dir = mkdtempSync(join(tmpdir(), "ccshare-libsql-registry-"));
-let n = 0;
-
+// One isolated libSQL `:memory:` database per fresh() (the harness closes them).
 runRegistryContract({
-  name: "libsql (file:)",
+  name: "libsql (:memory:)",
   fresh: async () => {
-    const db = new LibsqlDatabase(`file:${join(dir, `db-${n++}.sqlite`)}`);
+    const db = new LibsqlDatabase(":memory:");
     await db.init();
     return db;
   },

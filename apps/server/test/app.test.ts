@@ -1,11 +1,13 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import type { AuthResponse, SharedView } from "@ccshare/core";
-import { makeApp, makeMemoryDeps } from "../src/app.js";
+import { makeApp, type ServerDeps } from "../src/app.js";
+import { makeTestDeps } from "./helpers.js";
 
 /**
- * The whole HTTP surface against in-memory deps — this is why ServerDeps is an
- * interface. No sockets: Hono's app.request() drives the routes directly.
+ * The whole HTTP surface against a libSQL `:memory:` database — the same
+ * composition production uses, zero infrastructure. No sockets: Hono's
+ * app.request() drives the routes directly.
  */
 
 const ACCOUNT = "acc-uuid-1";
@@ -19,9 +21,16 @@ const AT = new Date(Date.now() - 60_000).toISOString();
 const MSG_AT = new Date(Date.now() - 120_000).toISOString();
 
 let app: Hono<never>;
+let deps: ServerDeps;
 
-beforeEach(() => {
-  app = makeApp(makeMemoryDeps()) as unknown as Hono<never>;
+beforeEach(async () => {
+  deps = await makeTestDeps();
+  app = makeApp(deps) as unknown as Hono<never>;
+});
+
+afterEach(async () => {
+  await deps.tenants.close();
+  await deps.db.close();
 });
 
 const json = (body: unknown): RequestInit => ({

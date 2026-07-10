@@ -29,14 +29,15 @@ pnpm vitest run -t "attributeShares"                     # tests matching a name
 node apps/cli/dist/cli.js <command>
 pnpm --filter @ccshare/cli dev <command>   # tsx, no build step
 
-# run the built server (Postgres or libSQL — driver inferred from DATABASE_URL)
-DATABASE_URL=postgres://… PORT=8787 node apps/server/dist/index.js
+# run the built server (libSQL — a file: path or a libsql://… Turso URL)
 DATABASE_URL=file:/tmp/ccshare-server.db PORT=8787 node apps/server/dist/index.js
+DATABASE_URL=libsql://… CCSHARE_DB_AUTH_TOKEN=… PORT=8787 node apps/server/dist/index.js
 ```
 
-Both runtimes must stay green — **CI runs the whole suite twice (Node and Bun)** and
-runs the Postgres-gated suites (storage contract + server integration) against a real
-Postgres. To run them locally, set `CCSHARE_TEST_PG_URL` (otherwise they skip).
+Both runtimes must stay green — **CI runs the whole suite twice (Node and Bun)**. The
+storage/registry contract suites and the server integration tests run on a libSQL
+`:memory:` database (`file:` for the one on-disk regression test), so there is **no
+external infrastructure** to provision — the whole suite is self-contained.
 
 When manually exercising the CLI/daemon/server, isolate state with env overrides so
 you don't touch real data: `CCSHARE_DIR` (ccshare's `~/.ccshare`), `CLAUDE_CONFIG_DIR`
@@ -51,20 +52,20 @@ before committing.
 
 Monorepo (pnpm workspaces + turbo). The meaningful packages:
 
-- `packages/core` — runtime-agnostic domain logic: the `Storage` interface, the
-  in-memory adapter, the `IngestSink`/`ViewSource` backend boundary (the
-  storage-backed pieces the server composes + the HTTP client the CLI uses), the
-  wire contract, identity/credentials, the usage poller, reset detection, the JSONL
-  reader, the attribution algorithm, view assembly, and shared formatters. No UI,
-  no process.
-- `packages/storage-libsql` — server-side libSQL backend (`file:` and `libsql://`):
-  `LibsqlDatabase` (the ONE client, DDL, the registry) + the `LibsqlStorage` facade.
-- `packages/storage-postgres` — server-side Postgres backend: `PostgresDatabase`
-  (the ONE pool, DDL, the registry) + the `PostgresStorage` facade.
+- `packages/core` — runtime-agnostic domain logic: the `Storage` interface (the one
+  boundary; the adapter itself lives in storage-libsql), the `IngestSink`/`ViewSource`
+  backend boundary (the storage-backed pieces the server composes + the HTTP client
+  the CLI uses), the registry row/error shapes, the wire contract,
+  identity/credentials, the usage poller, reset detection, the JSONL reader, the
+  attribution algorithm, view assembly, and shared formatters. No UI, no process.
+- `packages/storage-libsql` — the server-side backend and the **only** database code
+  (`file:` local SQLite and remote `libsql://` Turso): `LibsqlDatabase` (the ONE
+  client, DDL, the concrete `LibsqlRegistry`) + the `LibsqlStorage` facade. The
+  server is the only thing that opens it; nothing else does.
 - `packages/daemon` — the long-running observer (poll loop, lifecycle, `spawnDetached`).
 - `apps/cli` — Commander + Ink CLI (the composition root). **HTTP client only — it
   never opens a database.**
-- `apps/server` — the multi-tenant HTTP server (Hono; Postgres _or_ libSQL).
+- `apps/server` — the multi-tenant HTTP server (Hono; libSQL).
 - `apps/web` — unrelated Astro marketing site.
 
 ### One path to the ledger, one boundary
@@ -85,14 +86,7 @@ config becomes a sink/source. The server composes the storage-backed pieces
 (`StorageIngestSink`/`StorageViewSource` in `backend/storage.ts`) over a
 group-scoped `Storage`.
 
-`@ccshare/core` deliberately ships **both** sides of this boundary — the HTTP
-implementations (`HttpIngestSink`/`HttpViewSource`) and the storage-backed ones
-(plus `Storage`, `MemoryStorage`, `Database`) all come out of the one barrel. The
-"CLI never opens a database" split is held **by composition, not by module
-structure**: `apps/cli` depends on no `storage-*` adapter and its `backend.ts` only
-ever wires the HTTP pair, so a `Storage` never gets constructed client-side. There
-is no lint boundary enforcing this — keep it a rule you follow: the CLI imports the
-HTTP backend and view/format helpers from core, never `Storage*`/`Database`.
+`@ccshare/core` ships the HTTP client **and** the storage-backed backend pieces (`StorageIngestSink`/`StorageViewSource`, written against the `Storage` interface) out of one barrel; the concrete adapter lives in `@ccshare/storage-libsql`. The "CLI never opens a database" split is held **by composition**: `apps/cli` imports no `storage-*` adapter and only wires the HTTP pair. There is no lint boundary — keep it a rule: the CLI imports the HTTP backend and view/format helpers from core, never `Storage*` or `@ccshare/storage-libsql`.
 
 ### The data flow
 
@@ -133,61 +127,59 @@ and never ship raw rows over the network — `SharedView` is the wire unit.
 ### Strict boundary: `Storage`
 
 `packages/core/src/storage/storage.ts` is the one interface that must stay clean.
-Adapters are dumb (rows in, rows out — `recordBatch`/`prune`/`getChangeToken` are
+The adapter is dumb (rows in, rows out — `recordBatch`/`prune`/`getChangeToken` are
 still just row mutation + a counter) — **no business logic lives in storage.**
 **Storage is server-only** and every instance is **scoped to one `groupId`** (bound
 at construction, injected as a `group_id` column on every table), so one shared
-database backs every group. A shared contract suite
-(`packages/core/test/storage-contract.ts`) runs against memory, libSQL, and Postgres
-— including a two-groups-in-one-DB isolation case — proving swappability, `group_id`
-isolation, and the group-setup rules.
+database backs every group. The contract suite
+(`packages/core/test/storage-contract.ts`) runs the one adapter (`LibsqlStorage`)
+over a libSQL `:memory:` database — including a two-groups-in-one-DB isolation case —
+proving correctness, `group_id` isolation, and the group-setup rules.
 
-**One `Database`, one pool per process.** Core also owns the `Database` interface
-(`packages/core/src/storage/database.ts`): each storage package implements it once
-per process from `DATABASE_URL` — it owns THE single Postgres pool
-(`CCSHARE_PG_POOL_MAX`, default 10) or libSQL client, runs the idempotent global
-DDL at boot (`init()`), and vends group-scoped `Storage` **facades** (`forGroup`)
-over that shared pool. A facade's `close()` is a no-op; only `Database.close()`
-tears down (tests must close the Database, or a leaked pg pool hangs vitest).
-Never give a group its own pool/client again.
+**One `LibsqlDatabase`, one client per process.** `LibsqlDatabase`
+(`packages/storage-libsql/src/database.ts`) is the one physical database the server
+opens from `DATABASE_URL`: it owns THE single libSQL client, runs the idempotent
+global DDL at boot (`init()`), and vends group-scoped `Storage` **facades**
+(`forGroup`) over that shared client. A facade's `close()` is a no-op; only
+`LibsqlDatabase.close()` tears down (tests must close it, or a leaked client hangs
+vitest). Never give a group its own client again. There is **no `Database`
+interface** — one driver, one concrete class the server imports directly.
 
-**The registry lives in the storage packages, not the server.** The registry tables
-(groups/members/tokens) sit behind core's `Registry` interface
-(`packages/core/src/registry/registry.ts`), implemented next to each `Database` —
-`apps/server` contains no SQL. The composed signup ops are single transactions that
+**The registry lives in storage-libsql, not the server.** The registry tables
+(groups/members/tokens) are the concrete `LibsqlRegistry`
+(`packages/storage-libsql/src/registry.ts`) on `LibsqlDatabase`; core owns only the
+row/input/error shapes (`packages/core/src/registry/registry.ts`), and `apps/server`
+contains no SQL. The composed signup ops are single transactions that
 deliberately cross into the ledger tables: `createGroupWithMember` writes the group
 row + its `ccshare_meta` + the roster row + the member + the token atomically (a
 lost UNIQUE race throws `RegistryConflictError` and writes NOTHING — no
 compensation), and `addMemberWithToken` does member + roster + `writeSeq` bump +
 token. A registry contract suite (`packages/core/test/registry-contract.ts`) runs
-against memory, libSQL, and Postgres. The server picks the driver in
-`apps/server/src/backend.ts` (`makeServerDeps`) and caches per-group compositions
-(sink + view source + `LedgerWindow`) in the connection-free `TenantCache`
-(`apps/server/src/tenants.ts`); eviction is a plain map delete. Ledger rows carry a
-`group_id` referencing `groups(id)`.
+over a libSQL `:memory:` database. The server composes `LibsqlDatabase` in
+`apps/server/src/backend.ts` and caches per-group compositions in `TenantCache`
+(`apps/server/src/tenants.ts`). Ledger rows carry a `group_id` referencing
+`groups(id)`.
 
 ### Schema changes require a versioned migration (do this every time)
 
 **Any new feature or conflict-guard that touches the DB — a new column, table, or
 `ccshare_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
-edit.** (`SCHEMA_VERSION` is currently **1**, the relational baseline: one shared DB,
-a per-group `ccshare_meta` row, and `group_id` on every ledger table. Pre-rewrite dev
-DBs are simply re-inited.) For each such change:
+edit.** (`SCHEMA_VERSION` is currently **1**.) For each such change:
 
 1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document
    what the new version adds.
-2. Add the columns/tables to the fresh schema of **all three** adapters (memory,
-   libSQL, Postgres) — the shared DDL (`ddl.ts` in each storage package) feeds both
-   `Database.init()` (boot) and `initializeSchema` (per-group provisioning) — keeping
-   the `group_id` scoping.
-3. Extend `migrate(toVersion)` in each adapter to bring an older DB forward
+2. Add the columns/tables to the fresh schema in
+   `packages/storage-libsql/src/ddl.ts` — the shared DDL feeds both
+   `LibsqlDatabase.init()` (boot) and `initializeSchema` (per-group provisioning) —
+   keeping the `group_id` scoping.
+3. Extend `migrate(toVersion)` in `LibsqlStorage` to bring an older DB forward
    **idempotently and additively** (nullable columns; `ADD COLUMN IF NOT EXISTS` /
    probe-then-`ALTER`), so it's forward- and multi-machine-safe. Never a destructive
    migration on a shared DB.
 4. The server migrates each group's ledger on tenant open
    (`StorageIngestSink.bootstrap`), so nobody re-runs anything after an update. Keep
    it that way.
-5. Cover it in the storage contract suite so every adapter is proven.
+5. Cover it in the storage contract suite.
 
 Migrations must stay backward-compatible: an older server still reads/writes a newer
 DB (inspect uses `SELECT *`, writers only touch known columns). Don't make a new
@@ -210,15 +202,9 @@ A rise with no measured message in its interval normally falls to `unknown`. The
 exception is a **`UsageMarker`**: the daemon records one when it observes a local rise
 with no in-interval message _while this machine's user was driving Code moments ago_
 (an endpoint-lagged tail, or a resume/compaction re-prime the transcript
-under-reports). Markers are a **strict fallback** — a real message in the interval
-always wins, so they can never dilute measured attribution. See ALGORITHM.md §7.
+under-reports). Markers are a **strict fallback** — a real message in the interval always wins, so they can never dilute measured attribution.
 
-> Do **not** revert to apportioning the _current_ tank by token weight. That was the
-> original bug: a single message made a user absorb 100% of the tank, including
-> pre-daemon, prior-session, and mobile/web/chat usage. The tank level at the
-> daemon's first reading is `unknown`'s baseline; a rise with no Code activity in its
-> interval goes to `unknown`; `unknown` always absorbs the remainder so columns total
-> the tank.
+> Do not revert to apportioning the current tank by token weight — a single message would absorb 100% of the tank. `unknown` absorbs rises with no Code activity; columns always total the tank.
 
 ## Invariants to preserve
 
@@ -260,7 +246,7 @@ always wins, so they can never dilute measured attribution. See ALGORITHM.md §7
   (409 `account-conflict` on `/v1/ingest`, nothing written); a running daemon halts
   all ledger writes on a mismatch and flags `state.json`'s `account.conflict`. The
   `accountId` column stays nullable so the one-way `null → accountUuid` claim
-  (`bindAccount`) remains available. See ALGORITHM.md §1.5.
+  (`bindAccount`) remains available.
 - **Secrets stay out of config.json.** The 0600 `~/.ccshare/token` file holds the
   server bearer; the server stores only sha256 hashes of bearers and self-describing
   scrypt hashes of passwords. The CLI refuses plain-http server URLs except
