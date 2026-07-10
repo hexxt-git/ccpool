@@ -51,7 +51,13 @@ export interface DesignModel {
   loggedOut: boolean;
   /** The single prominent red line to show, or null. Never fabricated data. */
   alert: string | null;
+  /** Whether `unknown` holds a non-trivial share (> 5% of any cap) worth explaining. */
+  unknownNote: boolean;
 }
+
+/** What `unknown` actually is — shown when its share is big enough to puzzle people. */
+export const UNKNOWN_NOTE =
+  '"unknown" counts usage on the claude.ai website or mobile app, or usage without ccshare running';
 
 export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now()): DesignModel {
   const byCapSample = new Map(vm.samples.map((s) => [s.cap, s]));
@@ -129,6 +135,13 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
         ? `usage poll ${vm.pollError.message} — retrying...`
         : null;
 
+  // Surface what `unknown` means once it holds a meaningful slice of any cap —
+  // people wonder where the un-attributed usage comes from (web/mobile, or Code
+  // run without the daemon). Below 5% it's just noise; don't clutter the view.
+  const unknown = members.find((m) => m.name === UNKNOWN_USER);
+  const unknownPct = unknown ? Math.max(0, ...Object.values(unknown.byCap)) : 0;
+  const unknownNote = unknownPct > 5;
+
   const notes: string[] = [];
   // Loudest first: a mismatched account means the ledger is NOT recording this
   // machine — everything below reflects only the local poll, not the shared group.
@@ -152,6 +165,7 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     notes,
     loggedOut: vm.loggedOut,
     alert,
+    unknownNote,
   };
 }
 

@@ -58,6 +58,25 @@ export const LEDGER_DDL: string[] = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_reset_events_at ON reset_events (group_id, at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq ON reset_events (group_id, cap, at)`,
+  // Immutable history of completed cap cycles (ADR-0002/0005). Retained unbounded.
+  `CREATE TABLE IF NOT EXISTS history_windows (
+     group_id TEXT NOT NULL,
+     cap TEXT NOT NULL,
+     windowStart TEXT NOT NULL,
+     windowEnd TEXT NOT NULL,
+     overall REAL NOT NULL,
+     closedAt TEXT NOT NULL,
+     PRIMARY KEY (group_id, cap, windowStart)
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_history_windows_start ON history_windows (group_id, cap, windowStart)`,
+  `CREATE TABLE IF NOT EXISTS history_shares (
+     group_id TEXT NOT NULL,
+     cap TEXT NOT NULL,
+     windowStart TEXT NOT NULL,
+     user TEXT NOT NULL,
+     pct REAL NOT NULL,
+     PRIMARY KEY (group_id, cap, windowStart, user)
+   )`,
 ];
 
 /** The registry tables (groups / members / tokens), same database. */

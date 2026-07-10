@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { render } from "ink-testing-library";
 import { Box } from "ink";
-import { toDesignModel } from "../src/lib/design-model.js";
+import { toDesignModel, UNKNOWN_NOTE } from "../src/lib/design-model.js";
 import { DESIGNS } from "../src/tui/designs/index.js";
 import type { ViewModel } from "../src/lib/view.js";
 
@@ -56,6 +56,47 @@ describe("toDesignModel", () => {
     const unknown = model.members.find((m) => m.name === "unknown")!;
     expect(unknown.byCap.seven_day_opus).toBeUndefined();
   });
+
+  it("flags the `unknown` explainer when its share tops 5% of any cap", () => {
+    // unknown holds 52% of the weekly cap -> the explainer shows
+    expect(model.unknownNote).toBe(true);
+  });
+
+  it("omits the explainer when `unknown` is a trivial slice (<= 5%)", () => {
+    const tinyUnknown: ViewModel = {
+      ...vm,
+      shares: [
+        { user: "alice", cap: "five_hour", pct: 96 },
+        { user: "unknown", cap: "five_hour", pct: 4 },
+      ],
+      samples: [{ cap: "five_hour", pct: 100, resetsAt: iso(-160), capturedAt: iso(0) }],
+    };
+    expect(toDesignModel(tinyUnknown, "alice", now).unknownNote).toBe(false);
+  });
+});
+
+describe("the `unknown` explainer wraps to the available width", () => {
+  // The note is never shortened — on a narrow terminal it wraps across as many rows
+  // as it needs; on a wide one it sits on a single line.
+  const model = toDesignModel(vm, "alice", now);
+  const flat = (s: string) => s.replace(/\s+/g, " ");
+  for (const d of DESIGNS) {
+    it(`renders "${d.name}" wrapping the full note at narrow width`, () => {
+      const { lastFrame, unmount } = render(<Box>{d.render(model, 40, 30, 0)}</Box>);
+      const frame = lastFrame() ?? "";
+      // too wide for 40 cols, so it can't be on one line...
+      expect(frame).not.toContain(UNKNOWN_NOTE);
+      // ...but the whole sentence is present, just split across rows
+      expect(flat(frame)).toContain(UNKNOWN_NOTE);
+      unmount();
+    });
+
+    it(`renders "${d.name}" keeping the note on one line when it fits`, () => {
+      const { lastFrame, unmount } = render(<Box>{d.render(model, 200, 30, 0)}</Box>);
+      expect(lastFrame() ?? "").toContain(UNKNOWN_NOTE);
+      unmount();
+    });
+  }
 });
 
 describe("designs render", () => {
@@ -68,6 +109,7 @@ describe("designs render", () => {
       expect(frame).toContain("alice");
       expect(frame).toContain("unknown");
       expect(frame).toContain("91%"); // 5h tank
+      expect(frame).toContain("claude.ai"); // unknown explainer (52% weekly)
       unmount();
     });
   }

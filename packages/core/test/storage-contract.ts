@@ -330,6 +330,62 @@ export function runStorageContract(h: ContractHarness): void {
       // The pruned uuid is gone for good, so a very old row re-sent later would
       // re-insert — acceptable: ingest never re-sends rows older than the window.
     });
+
+    it("records frozen history windows; reads newest-first, cap-scoped, paged", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      const win = (start: string, end: string, overall: number) => ({
+        cap: "five_hour" as const,
+        windowStart: start,
+        windowEnd: end,
+        overall,
+        closedAt: end,
+      });
+
+      await s.recordHistoryWindow(win("2026-06-29T00:00:00.000Z", "2026-06-29T05:00:00.000Z", 80), [
+        { cap: "five_hour", windowStart: "2026-06-29T00:00:00.000Z", user: "alice", pct: 50 },
+        { cap: "five_hour", windowStart: "2026-06-29T00:00:00.000Z", user: "bob", pct: 30 },
+      ]);
+      await s.recordHistoryWindow(win("2026-06-29T05:00:00.000Z", "2026-06-29T10:00:00.000Z", 60), [
+        { cap: "five_hour", windowStart: "2026-06-29T05:00:00.000Z", user: "alice", pct: 60 },
+      ]);
+      // A different cap must not bleed into five_hour queries.
+      await s.recordHistoryWindow(
+        {
+          cap: "seven_day",
+          windowStart: "2026-06-29T00:00:00.000Z",
+          windowEnd: "2026-07-06T00:00:00.000Z",
+          overall: 40,
+          closedAt: "2026-07-06T00:00:00.000Z",
+        },
+        [{ cap: "seven_day", windowStart: "2026-06-29T00:00:00.000Z", user: "alice", pct: 40 }]
+      );
+
+      // Newest first, scoped to the cap.
+      const all = await s.getHistoryWindows("five_hour");
+      expect(all.map((w) => w.windowStart)).toEqual([
+        "2026-06-29T05:00:00.000Z",
+        "2026-06-29T00:00:00.000Z",
+      ]);
+      expect(all[0]?.overall).toBe(60);
+
+      // Frozen: re-recording the same (cap, windowStart) is a no-op (first write wins).
+      await s.recordHistoryWindow(
+        win("2026-06-29T05:00:00.000Z", "2026-06-29T10:00:00.000Z", 999),
+        [{ cap: "five_hour", windowStart: "2026-06-29T05:00:00.000Z", user: "alice", pct: 999 }]
+      );
+      expect((await s.getHistoryWindows("five_hour"))[0]?.overall).toBe(60);
+
+      // Paging: the before-cursor is exclusive; limit caps the page.
+      const older = await s.getHistoryWindows("five_hour", { before: "2026-06-29T05:00:00.000Z" });
+      expect(older.map((w) => w.windowStart)).toEqual(["2026-06-29T00:00:00.000Z"]);
+      expect(await s.getHistoryWindows("five_hour", { limit: 1 })).toHaveLength(1);
+
+      // Shares are scoped to the window and sum to its overall.
+      const shares = await s.getHistoryShares("five_hour", "2026-06-29T00:00:00.000Z");
+      expect(shares.map((x) => x.user).sort()).toEqual(["alice", "bob"]);
+      expect(shares.reduce((n, x) => n + x.pct, 0)).toBe(80);
+    });
   });
 }
 

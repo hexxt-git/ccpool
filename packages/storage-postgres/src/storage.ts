@@ -7,6 +7,8 @@ import {
   SCHEMA_VERSION,
   type CapKind,
   type DbInspection,
+  type HistoryShare,
+  type HistoryWindow,
   type MessageUsage,
   type ResetEvent,
   type Storage,
@@ -76,6 +78,18 @@ export class PostgresStorage implements Storage {
         ON usage_samples (group_id, cap, "capturedAt")`;
       await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq
         ON reset_events (group_id, cap, at)`;
+      // Additive: an older DB gains the history tables here (fresh DBs get them
+      // from runLedgerDdl at init). Kept in sync with ddl.ts.
+      await tx`CREATE TABLE IF NOT EXISTS history_windows (
+        group_id TEXT NOT NULL, cap TEXT NOT NULL, "windowStart" TEXT NOT NULL,
+        "windowEnd" TEXT NOT NULL, overall DOUBLE PRECISION NOT NULL, "closedAt" TEXT NOT NULL,
+        PRIMARY KEY (group_id, cap, "windowStart"))`;
+      await tx`CREATE INDEX IF NOT EXISTS idx_history_windows_start
+        ON history_windows (group_id, cap, "windowStart")`;
+      await tx`CREATE TABLE IF NOT EXISTS history_shares (
+        group_id TEXT NOT NULL, cap TEXT NOT NULL, "windowStart" TEXT NOT NULL,
+        "user" TEXT NOT NULL, pct DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY (group_id, cap, "windowStart", "user"))`;
       await tx`UPDATE ccshare_meta SET "schemaVersion" = ${toVersion}
         WHERE group_id = ${this.groupId}`;
     });
@@ -234,6 +248,56 @@ export class PostgresStorage implements Storage {
       at: r.at,
       model: r.model,
       weight: Number(r.weight),
+    }));
+  }
+
+  async recordHistoryWindow(window: HistoryWindow, shares: HistoryShare[]): Promise<void> {
+    const g = this.groupId;
+    await this.sql.begin(async (tx) => {
+      await tx`INSERT INTO history_windows
+        (group_id, cap, "windowStart", "windowEnd", overall, "closedAt")
+        VALUES (${g}, ${window.cap}, ${window.windowStart}, ${window.windowEnd},
+                ${window.overall}, ${window.closedAt})
+        ON CONFLICT (group_id, cap, "windowStart") DO NOTHING`;
+      for (const sh of shares) {
+        await tx`INSERT INTO history_shares (group_id, cap, "windowStart", "user", pct)
+          VALUES (${g}, ${sh.cap}, ${sh.windowStart}, ${sh.user}, ${sh.pct})
+          ON CONFLICT (group_id, cap, "windowStart", "user") DO NOTHING`;
+      }
+      await tx`UPDATE ccshare_meta SET "writeSeq" = "writeSeq" + 1 WHERE group_id = ${g}`;
+    });
+  }
+
+  async getHistoryWindows(
+    cap: CapKind,
+    opts: { before?: string; limit?: number } = {}
+  ): Promise<HistoryWindow[]> {
+    const limit = opts.limit ?? 100;
+    const before = opts.before ?? null;
+    const rows = await this.sql<
+      { cap: string; windowStart: string; windowEnd: string; overall: number; closedAt: string }[]
+    >`SELECT cap, "windowStart", "windowEnd", overall, "closedAt" FROM history_windows
+      WHERE group_id = ${this.groupId} AND cap = ${cap}
+        AND (${before}::text IS NULL OR "windowStart" < ${before})
+      ORDER BY "windowStart" DESC LIMIT ${limit}`;
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      windowStart: r.windowStart,
+      windowEnd: r.windowEnd,
+      overall: Number(r.overall),
+      closedAt: r.closedAt,
+    }));
+  }
+
+  async getHistoryShares(cap: CapKind, windowStart: string): Promise<HistoryShare[]> {
+    const rows = await this.sql<{ cap: string; windowStart: string; user: string; pct: number }[]>`
+      SELECT cap, "windowStart", "user", pct FROM history_shares
+      WHERE group_id = ${this.groupId} AND cap = ${cap} AND "windowStart" = ${windowStart}`;
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      windowStart: r.windowStart,
+      user: r.user,
+      pct: Number(r.pct),
     }));
   }
 }

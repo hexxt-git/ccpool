@@ -59,6 +59,19 @@ export interface ResetEvent {
 }
 
 /**
+ * One point on a cap's **monotonic usage envelope**: the tank reached `pct` — a new
+ * max within the current window — at `at`. The server derives these from the raw
+ * `UsageSample`s daemons POST and persists only these; the envelope is all
+ * attribution consumes, so per-member raw sample streams never hit the ledger
+ * (ADR-0004). One canonical stream per group per cap. Natural key `(cap, at)`.
+ */
+export interface ChangePoint {
+  cap: CapKind;
+  at: string; // ISO 8601, when the new max was observed
+  pct: number; // 0..100, the new envelope level
+}
+
+/**
  * One attributable Claude Code message, credited to the active name at ingest.
  * Cache fields are reliable; raw input/output undercount — kept but flagged.
  */
@@ -98,6 +111,55 @@ export interface UserShare {
   cap: CapKind;
   /** This name's slice of the window's overall percentage. Rows sum to the tank. */
   pct: number;
+}
+
+/**
+ * An immutable summary of one **completed cap cycle** — the history unit (ADR-0002).
+ * Its bounds plus how full the tank got (`overall`, the envelope top at close). The
+ * per-member split lives in {@link HistoryShare} rows keyed by the same
+ * `(cap, windowStart)`. Frozen after the 30-min grace; retained unbounded (ADR-0005).
+ */
+export interface HistoryWindow {
+  cap: CapKind;
+  windowStart: string; // ISO 8601 — the reset that opened the window (or first obs.)
+  windowEnd: string; // ISO 8601 — the reset that closed it
+  overall: number; // 0..100, the envelope top at close
+  closedAt: string; // ISO 8601 — when the record was frozen (windowEnd + grace)
+}
+
+/**
+ * One member's final share of a completed window (ADR-0002/0005). Rows for a given
+ * `(cap, windowStart)` sum to that window's `overall`; `unknown` is a normal row.
+ * These back `ccshare history` and the TUI history matrix.
+ */
+export interface HistoryShare {
+  cap: CapKind;
+  windowStart: string; // joins HistoryWindow
+  user: string;
+  pct: number;
+}
+
+/** A completed window with its per-member shares inlined — the history read unit. */
+export interface HistoryWindowView {
+  cap: CapKind;
+  windowStart: string;
+  windowEnd: string;
+  overall: number; // the window's final tank level
+  shares: { user: string; pct: number }[]; // sum to `overall`; includes `unknown`
+}
+
+/** A cursor-paged page of history windows, newest first (ADR-0005). */
+export interface HistoryPage {
+  windows: HistoryWindowView[];
+  /** Pass as `before` to fetch the next older page; null when there are no more. */
+  nextBefore: string | null;
+}
+
+/** A history query: which cap, an exclusive `before` cursor, and a page size. */
+export interface HistoryQuery {
+  cap: CapKind;
+  before?: string;
+  limit?: number;
 }
 
 /**

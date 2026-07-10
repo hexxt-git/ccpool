@@ -7,6 +7,8 @@ import {
   SCHEMA_VERSION,
   type CapKind,
   type DbInspection,
+  type HistoryShare,
+  type HistoryWindow,
   type MessageUsage,
   type ResetEvent,
   type Storage,
@@ -84,6 +86,17 @@ export class LibsqlStorage implements Storage {
       [
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_samples_cap ON usage_samples (group_id, cap, capturedAt)`,
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq ON reset_events (group_id, cap, at)`,
+        // Additive: an older DB gains the history tables here (fresh DBs get them
+        // from LEDGER_DDL at init). Kept in sync with ddl.ts.
+        `CREATE TABLE IF NOT EXISTS history_windows (
+           group_id TEXT NOT NULL, cap TEXT NOT NULL, windowStart TEXT NOT NULL,
+           windowEnd TEXT NOT NULL, overall REAL NOT NULL, closedAt TEXT NOT NULL,
+           PRIMARY KEY (group_id, cap, windowStart))`,
+        `CREATE INDEX IF NOT EXISTS idx_history_windows_start ON history_windows (group_id, cap, windowStart)`,
+        `CREATE TABLE IF NOT EXISTS history_shares (
+           group_id TEXT NOT NULL, cap TEXT NOT NULL, windowStart TEXT NOT NULL,
+           user TEXT NOT NULL, pct REAL NOT NULL,
+           PRIMARY KEY (group_id, cap, windowStart, user))`,
         {
           sql: "UPDATE ccshare_meta SET schemaVersion = ? WHERE group_id = ?",
           args: [toVersion, this.groupId],
@@ -280,6 +293,70 @@ export class LibsqlStorage implements Storage {
       at: String(r.at),
       model: r.model == null ? null : String(r.model),
       weight: Number(r.weight),
+    }));
+  }
+
+  async recordHistoryWindow(window: HistoryWindow, shares: HistoryShare[]): Promise<void> {
+    const g = this.groupId;
+    const stmts: InStatement[] = [
+      {
+        sql: `INSERT INTO history_windows (group_id, cap, windowStart, windowEnd, overall, closedAt)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(group_id, cap, windowStart) DO NOTHING`,
+        args: [
+          g,
+          window.cap,
+          window.windowStart,
+          window.windowEnd,
+          window.overall,
+          window.closedAt,
+        ],
+      },
+    ];
+    for (const sh of shares) {
+      stmts.push({
+        sql: `INSERT INTO history_shares (group_id, cap, windowStart, user, pct)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(group_id, cap, windowStart, user) DO NOTHING`,
+        args: [g, sh.cap, sh.windowStart, sh.user, sh.pct],
+      });
+    }
+    stmts.push(this.bumpWriteSeq());
+    await this.client.batch(stmts, "write");
+  }
+
+  async getHistoryWindows(
+    cap: CapKind,
+    opts: { before?: string; limit?: number } = {}
+  ): Promise<HistoryWindow[]> {
+    const limit = opts.limit ?? 100;
+    const before = opts.before ?? null;
+    const { rows } = await this.client.execute({
+      sql: `SELECT cap, windowStart, windowEnd, overall, closedAt FROM history_windows
+            WHERE group_id = ?1 AND cap = ?2 AND (?3 IS NULL OR windowStart < ?3)
+            ORDER BY windowStart DESC LIMIT ?4`,
+      args: [this.groupId, cap, before, limit],
+    });
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      windowStart: String(r.windowStart),
+      windowEnd: String(r.windowEnd),
+      overall: Number(r.overall),
+      closedAt: String(r.closedAt),
+    }));
+  }
+
+  async getHistoryShares(cap: CapKind, windowStart: string): Promise<HistoryShare[]> {
+    const { rows } = await this.client.execute({
+      sql: `SELECT cap, windowStart, user, pct FROM history_shares
+            WHERE group_id = ? AND cap = ? AND windowStart = ?`,
+      args: [this.groupId, cap, windowStart],
+    });
+    return rows.map((r) => ({
+      cap: r.cap as CapKind,
+      windowStart: String(r.windowStart),
+      user: String(r.user),
+      pct: Number(r.pct),
     }));
   }
 

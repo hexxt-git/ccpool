@@ -40,6 +40,17 @@ export async function runLedgerDdl(tx: TransactionSql): Promise<void> {
     ON reset_events (group_id, at)`;
   await tx`CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq
     ON reset_events (group_id, cap, at)`;
+  // Immutable history of completed cap cycles (ADR-0002/0005). Retained unbounded.
+  await tx`CREATE TABLE IF NOT EXISTS history_windows (
+    group_id TEXT NOT NULL, cap TEXT NOT NULL, "windowStart" TEXT NOT NULL,
+    "windowEnd" TEXT NOT NULL, overall DOUBLE PRECISION NOT NULL, "closedAt" TEXT NOT NULL,
+    PRIMARY KEY (group_id, cap, "windowStart"))`;
+  await tx`CREATE INDEX IF NOT EXISTS idx_history_windows_start
+    ON history_windows (group_id, cap, "windowStart")`;
+  await tx`CREATE TABLE IF NOT EXISTS history_shares (
+    group_id TEXT NOT NULL, cap TEXT NOT NULL, "windowStart" TEXT NOT NULL,
+    "user" TEXT NOT NULL, pct DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (group_id, cap, "windowStart", "user"))`;
 }
 
 /** The registry tables (groups / members / tokens), same database. */

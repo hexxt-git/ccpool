@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
-import type { Config, ViewSource } from "@ccshare/core";
+import { CAP_KINDS, type Config, type ViewSource } from "@ccshare/core";
 import { gatherView, type LastRoster } from "../lib/view.js";
 import { toDesignModel, type DesignModel } from "../lib/design-model.js";
 import { loadConfig } from "../lib/config.js";
 import { DESIGNS } from "./designs/index.js";
+import { renderHistory, type HistoryState } from "./history.js";
 import { P } from "./designs/palette.js";
 import { useTermSize } from "./use-term-size.js";
 import { GITHUB_URL, SITE_URL, link } from "../lib/links.js";
@@ -21,8 +22,9 @@ const MESSAGES: { label: string; url?: string }[] = [
   { label: "↻ share access, don't lose it" },
   { label: "✎ open an issue on GitHub", url: GITHUB_URL },
 ];
-const SHORTCUTS = "⇥ switch · ↑↓ scroll · q quit";
-const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · r re-init · q quit";
+const SHORTCUTS = "⇥ switch · ↑↓ scroll · h history · q quit";
+const SHORTCUTS_CONFIG = "⇥ switch · ↑↓ scroll · h history · r re-init · q quit";
+const SHORTCUTS_HISTORY = "⇥ cap · ↑↓ windows · ⏎ expand · h live · q quit";
 
 /**
  * Live shared view. Polls the DB / state.json every 2s and re-renders the clock
@@ -51,6 +53,38 @@ export function App({
   const [idx, setIdx] = useState(0);
   const [scroll, setScroll] = useState(0);
   const [msg, setMsg] = useState(0);
+  const [mode, setMode] = useState<"live" | "history">("live");
+  const [hist, setHist] = useState<HistoryState>({
+    capIdx: 0,
+    windows: null,
+    error: null,
+    cursor: 0,
+    expanded: false,
+    memberOff: 0,
+  });
+
+  // History is cold/immutable — fetched on entering the mode and on cap change,
+  // never on the 2s live refresh. A stale response for an old cap is discarded.
+  const fetchHistory = useCallback(
+    async (capIdx: number) => {
+      setHist((h) => ({
+        ...h,
+        capIdx,
+        windows: null,
+        error: null,
+        cursor: 0,
+        expanded: false,
+        memberOff: 0,
+      }));
+      try {
+        const page = await viewSource.history({ cap: CAP_KINDS[capIdx]!, limit: 200 });
+        setHist((h) => (h.capIdx === capIdx ? { ...h, windows: page.windows } : h));
+      } catch (e) {
+        setHist((h) => (h.capIdx === capIdx ? { ...h, error: (e as Error).message } : h));
+      }
+    },
+    [viewSource]
+  );
 
   // The last *clean* view's roster, reused when a poll can't reach the backend so
   // the members table keeps showing everyone instead of blanking (view.ts).
@@ -96,7 +130,8 @@ export function App({
 
   // bottom bar: one row when wide, two stacked when the message+shortcuts won't fit
   const current = MESSAGES[msg]!;
-  const shortcutsText = onConfigure ? SHORTCUTS_CONFIG : SHORTCUTS;
+  const shortcutsText =
+    mode === "history" ? SHORTCUTS_HISTORY : onConfigure ? SHORTCUTS_CONFIG : SHORTCUTS;
   const wide = innerCols >= current.label.length + shortcutsText.length + 4;
   const footerH = wide ? 1 : 2;
   // Leave the last terminal row unused so the rendered output stays strictly
@@ -114,8 +149,44 @@ export function App({
 
   useInput(
     (input, key) => {
-      if (input === "q" || key.escape) exit();
-      else if (input === "r" && onConfigure) onConfigure();
+      if (input === "q") return void exit(); // q always quits, in any mode
+      if (input === "h") {
+        // toggle history ⇄ live; entering history kicks off a fetch
+        if (mode === "live") {
+          setMode("history");
+          void fetchHistory(hist.capIdx);
+        } else setMode("live");
+        return;
+      }
+
+      if (mode === "history") {
+        const wins = hist.windows;
+        if (hist.expanded) {
+          if (key.escape || key.return) setHist((h) => ({ ...h, expanded: false }));
+          else if (key.downArrow || input === "j")
+            setHist((h) => ({ ...h, memberOff: h.memberOff + 1 }));
+          else if (key.upArrow || input === "k")
+            setHist((h) => ({ ...h, memberOff: Math.max(0, h.memberOff - 1) }));
+          return;
+        }
+        if (key.escape) return void setMode("live");
+        if (key.tab) {
+          const next = (hist.capIdx + (key.shift ? CAP_KINDS.length - 1 : 1)) % CAP_KINDS.length;
+          void fetchHistory(next);
+        } else if (key.return) {
+          if (wins && wins.length) setHist((h) => ({ ...h, expanded: true, memberOff: 0 }));
+        } else if (key.downArrow || input === "j")
+          setHist((h) => ({ ...h, cursor: Math.min((wins?.length ?? 1) - 1, h.cursor + 1) }));
+        else if (key.upArrow || input === "k")
+          setHist((h) => ({ ...h, cursor: Math.max(0, h.cursor - 1) }));
+        else if (input === "g") setHist((h) => ({ ...h, cursor: 0 }));
+        else if (input === "G") setHist((h) => ({ ...h, cursor: (wins?.length ?? 1) - 1 }));
+        return;
+      }
+
+      // live mode
+      if (key.escape) return void exit();
+      if (input === "r" && onConfigure) onConfigure();
       else if (key.tab) {
         // tab cycles designs forward; shift+tab reverses
         setIdx((i) => (i + (key.shift ? n - 1 : 1)) % n);
@@ -140,7 +211,9 @@ export function App({
 
   return (
     <Box flexDirection="column" width={cols} height={appRows} paddingX={1}>
-      {model ? (
+      {mode === "history" ? (
+        renderHistory(CAP_KINDS[hist.capIdx]!, hist, innerCols, bodyRows)
+      ) : model ? (
         DESIGNS[idx]!.render(model, innerCols, bodyRows, off)
       ) : (
         <Box flexGrow={1}>

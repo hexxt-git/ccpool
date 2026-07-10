@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { UNKNOWN_USER } from "@ccshare/core";
-import type { DesignModel } from "../../lib/design-model.js";
+import { UNKNOWN_NOTE, type DesignModel } from "../../lib/design-model.js";
 import { P, personColor } from "./palette.js";
 import {
   Clawd,
@@ -124,6 +124,11 @@ export function split(
           </Panel>
         </Box>
       </Box>
+      {model.unknownNote ? (
+        <Box width={leftW + 2 + rightW}>
+          <Text color={P.dim}>{UNKNOWN_NOTE}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }

@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { runApp } from "./commands/app.js";
 import { runStatus } from "./commands/status.js";
+import { runHistory } from "./commands/history.js";
 import { runTui } from "./commands/tui.js";
 import { runInit } from "./commands/init.js";
 import { runDoctor } from "./commands/doctor.js";
@@ -101,6 +102,15 @@ program
   .description("one-shot snapshot of the shared account tank")
   .action(async () => {
     await runStatus();
+  });
+
+program
+  .command("history")
+  .description("table of previous windows and who used each")
+  .option("--cap <cap>", "which cap: 5h | weekly | opus", "5h")
+  .option("--limit <n>", "how many recent windows to show", "20")
+  .action(async (opts) => {
+    await runHistory(opts);
   });
 
 program

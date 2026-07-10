@@ -1,5 +1,8 @@
 import type {
+  CapKind,
   DbInspection,
+  HistoryShare,
+  HistoryWindow,
   MessageUsage,
   ResetEvent,
   TickBatch,
@@ -89,6 +92,30 @@ export interface Storage {
   getMessageUsageSince(since: string): Promise<MessageUsage[]>;
   /** Activity markers since `since` — fill rises with no measured activity (§7). */
   getUsageMarkersSince(since: string): Promise<UsageMarker[]>;
+
+  // history — immutable summaries of completed cap cycles (ADR-0002/0005)
+
+  /**
+   * Persist one frozen window and its per-member shares **atomically** and
+   * **idempotently** on `(cap, windowStart)`: a window is written exactly once at
+   * freeze time and never mutated, so a re-record is a no-op (the first write
+   * wins, like the ledger's retried-tick rule). Bumps the change token once.
+   */
+  recordHistoryWindow(window: HistoryWindow, shares: HistoryShare[]): Promise<void>;
+
+  /**
+   * Closed windows for one cap, **newest first** (`windowStart` DESC). `before`
+   * is an exclusive cursor (return windows strictly older than it) for paging;
+   * `limit` caps the page (adapter default when omitted). Backs `ccshare history`
+   * and the TUI matrix — retention is unbounded (Q6), so callers always page.
+   */
+  getHistoryWindows(
+    cap: CapKind,
+    opts?: { before?: string; limit?: number }
+  ): Promise<HistoryWindow[]>;
+
+  /** The per-member shares of one closed window (its expansion in the TUI). */
+  getHistoryShares(cap: CapKind, windowStart: string): Promise<HistoryShare[]>;
 }
 
 /** An empty batch — convenient default; recording it is a no-op for adapters. */

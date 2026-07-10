@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { DesignModel } from "../../lib/design-model.js";
+import { UNKNOWN_NOTE, type DesignModel } from "../../lib/design-model.js";
 import { P, heat, personColor } from "./palette.js";
 import { Bar, Cell, Header, Rule, StatusDot, lpad, pct, scrollLabel, share, tok } from "./parts.js";
 
@@ -148,6 +148,11 @@ export function overview(
           </Box>
         ))}
       </Box>
+      {model.unknownNote ? (
+        <Box width={inner}>
+          <Text color={P.dim}>{UNKNOWN_NOTE}</Text>
+        </Box>
+      ) : null}
       <Box flexGrow={1} />
     </Box>
   );

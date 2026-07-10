@@ -1,4 +1,4 @@
-import type { SharedView, TickBatch } from "../types.js";
+import type { HistoryPage, HistoryQuery, SharedView, TickBatch } from "../types.js";
 import {
   AccountConflictError,
   type IngestBootstrap,
@@ -211,6 +211,19 @@ export class HttpViewSource implements ViewSource {
     const etag = res.headers.get("etag");
     this.cache = etag ? { etag, view } : null;
     return view;
+  }
+
+  async history(query: HistoryQuery): Promise<HistoryPage> {
+    const url = new URL("/v1/history", this.baseUrl);
+    url.searchParams.set("cap", query.cap);
+    if (query.before) url.searchParams.set("before", query.before);
+    if (query.limit) url.searchParams.set("limit", String(query.limit));
+    const res = await this.fetchImpl(
+      url,
+      withTimeout({ headers: { authorization: `Bearer ${this.token}` } }, this.timeoutMs)
+    );
+    if (!res.ok) await throwApiError(res);
+    return (await res.json()) as HistoryPage;
   }
 
   async close(): Promise<void> {}

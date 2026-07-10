@@ -196,6 +196,25 @@ describe("Daemon.tick", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("does not re-send an unchanged tank, but a rise still ingests (report-on-change)", async () => {
+    const h = setup({ five_hour: { utilization: 42, resets_at: null } });
+    const daemon = new Daemon(h.deps);
+    await daemon.tick(); // first reading: 42 is sent
+
+    h.advance(60_000);
+    const spy = vi.spyOn(h.storage, "recordBatch");
+    await daemon.tick(); // still 42 — nothing new to send
+    expect(spy).not.toHaveBeenCalled();
+
+    h.setBody({ five_hour: { utilization: 55, resets_at: null } });
+    h.advance(60_000);
+    await daemon.tick(); // a rise — sent
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    const samples = await h.storage.getUsageSamplesSince(new Date(0).toISOString());
+    expect(samples.map((s) => s.pct)).toEqual([42, 55]); // only the two distinct levels
+  });
+
   it("keeps a failed batch and merges it into the next tick (no dropped rows)", async () => {
     const h = setup({ five_hour: { utilization: 42, resets_at: null } });
     let failNext = true;

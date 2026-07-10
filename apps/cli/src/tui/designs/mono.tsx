@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { DesignMember, DesignModel } from "../../lib/design-model.js";
+import { UNKNOWN_NOTE, type DesignMember, type DesignModel } from "../../lib/design-model.js";
 import { M, P } from "./palette.js";
 import { Leader, lpad, pad, pct, scrollLabel, share, tok } from "./parts.js";
 
@@ -86,6 +86,11 @@ export function mono(
           rc={M.mid}
         />
       ))}
+      {model.unknownNote ? (
+        <Box width={w}>
+          <Text color={M.mid}>{UNKNOWN_NOTE}</Text>
+        </Box>
+      ) : null}
       <Box flexGrow={1} />
     </Box>
   );
