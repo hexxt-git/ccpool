@@ -6,39 +6,35 @@ description: What ccpool is and why it exists.
 
 ## What is ccpool?
 
-ccpool is a serverless command-line utility designed to help teams and households coordinate usage of a shared Claude subscription. By managing a shared ledger, it ensures equitable access across Claude's rolling 5-hour and weekly usage windows.
+**Anthropic tells you the account is at 60%. ccpool tells you who got it there.**
 
-Claude enforces rate limits across two distinct periods:
+When a group shares one Claude subscription (Pro or Max), everyone collides on the same limits: someone burns the 5-hour window by noon, someone quietly eats the weekly cap, and nobody finds out until it's gone. ccpool gives the group a live, shared view of the account's usage **broken down by person**, so fair use becomes something you can see and negotiate instead of guess at.
 
-- **5-hour rolling window** — a high-frequency token quota that refreshes dynamically
-- **Weekly window** — a long-term cap that resets weekly
+It runs as a terminal dashboard (`ccpool tui`), a one-shot snapshot (`ccpool status`), and a Claude Code statusline (`ccpool statusline`).
 
-Without coordination, a single user's high-volume task can exhaust the entire team's quota. ccpool provides the tracking and pacing necessary to keep the subscription usable for everyone.
+## What you get
 
-## Key Features
+- **Live usage bars** for all three limits — the 5-hour window, the weekly cap, and the weekly Opus cap — with a countdown to each reset. These are pulled from Anthropic's own usage endpoint, so they match what the account actually enforces.
+- **A per-person breakdown** — each member's share of each limit, their token count, and whether they're coding right now.
+- **A Claude Code statusline**, so you can watch the shared limits without leaving your editor.
 
-### Automatic Request Pacing
-
-Users prompt Claude as normal while ccpool handles the scheduling behind the scenes. It tracks and schedules requests dynamically to ensure no single member hogs the team's limits.
-
-### Active Quota Reallocation
-
-To prevent wasted capacity, ccpool monitors team activity. If a member remains inactive, their allocated tokens are automatically redistributed to active team members one hour before the current usage window resets.
-
-### Flexible CLI Integration
-
-- **Minimal Setup** — Install and initialize the CLI in under five minutes with zero ongoing maintenance.
-- **Serverless Synchronization** — Sync ledger states across the team using standard cloud storage folders (such as Dropbox, iCloud, or a shared Git repository) as well as cloud database backends.
-- **Consumption Analytics** — Review detailed daily and weekly usage reports, complete with estimated cost breakdown metrics.
+Usage that ccpool can't tie to a person (someone using claude.ai in the browser, for example) shows up as `unknown`.
 
 ## How it works
 
-ccpool maintains a shared usage ledger (local or synced) and exposes a simple CLI to:
+Everyone in the group runs ccpool on their own machine and joins one shared ledger. A small background daemon on each machine checks Anthropic's usage endpoint for the account-wide limits, watches your local Claude Code activity to figure out which part of that usage is yours, and writes both to the ledger under your name. Put everyone's entries together and you get one set of account-wide bars, split by person.
 
-- Check how much quota remains in the current window
-- See each member's share of recent usage
-- Get notified when it's safe to use Claude again
+The ledger lives on a ccpool server. By default that's the hosted one, so there's nothing to deploy — but the server is open source and a group can run its own.
 
-## Design philosophy
+For the full pipeline — how the tank is polled, how the per-person split is reconstructed, and how the server stays cheap — see [How it works](/docs/algorithm).
 
-No servers required by default. No accounts. Just a file, a CLI, and a shared folder (or a git repo).
+## What ccpool is (and isn't)
+
+ccpool **observes and reports**. It is a read-only observer plus a shared ledger:
+
+- It **never proxies** your requests and never sits in the request path.
+- It **never touches your login** — it reads the token Claude Code already saved and the transcripts already on your disk.
+- It **only counts activity from the moment you start the daemon**, not your history.
+- It has **no budgets or quotas** and can't raise your limits or block anyone. It makes the sharing visible and leaves fair use to the group.
+
+Ready to set it up? Head to [Installation](/docs/installation).

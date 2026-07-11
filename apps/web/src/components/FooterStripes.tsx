@@ -39,7 +39,7 @@ export default function FooterStripes({
                 className="relative h-full w-full overflow-hidden bg-[#1a1a24]/40"
               >
                 <motion.div
-                  className="absolute bottom-0 left-0 top-0 w-full"
+                  className="footer-stripe absolute bottom-0 left-0 top-0 w-full"
                   style={{
                     backgroundColor: `var(--color-retro-stripe-${rowIndex + 1})`,
                     transformOrigin: isEven ? "left" : "right",

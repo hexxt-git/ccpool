@@ -48,7 +48,7 @@ function num(v: unknown): number {
 /**
  * Tails Claude Code transcripts, returning only lines appended *after* the daemon
  * came up. The first {@link collectNew} call baselines every existing file at its
- * current end-of-file and returns nothing — old history is never backfilled (§8).
+ * current end-of-file and returns nothing — old history is never backfilled (see "JSONL ingest").
  * On restart a fresh reader re-baselines to EOF, so activity that landed while the
  * daemon was down is skipped by design.
  */

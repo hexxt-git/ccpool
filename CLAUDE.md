@@ -9,7 +9,10 @@ the account's usage and who's driving it. It is a **read-only observer plus a sh
 ledger** — it never sits in the request path, never proxies, and only reads the
 OAuth token Claude Code already stored.
 
-Read `docs/ALGORITHM.md` for the full pipeline. `README.md` covers user-facing usage.
+The full pipeline is documented in the algorithm docs under
+`apps/web/src/pages/docs/algorithm/` (the overview `index.md` plus observation,
+attribution, views, storage-and-server, and resource-usage), published to the
+marketing site at `/docs/algorithm`. `README.md` covers user-facing usage.
 
 ## Commands
 
@@ -187,7 +190,7 @@ schema version refuse older servers.
 
 ### Design system
 
-strictly follow ./docs/DESIGN.md
+strictly follow ./DESIGN.md
 
 ### Attribution lives in core, not storage
 

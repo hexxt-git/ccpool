@@ -52,7 +52,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     // restart so the running process picks up the new backend, not the old one.
     if (opts.reconfigure || existing) {
       // The just-replaced token may have left a stale `authRejected` latch in
-      // state.json; clear it so the TUI doesn't route straight to re-init (§13).
+      // state.json; clear it so the TUI doesn't route straight to re-init (the "server" section).
       const fresh = await loadConfig();
       if (fresh) clearAuthRejected(fresh);
       await runDaemonRestart();

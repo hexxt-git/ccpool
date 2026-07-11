@@ -47,7 +47,7 @@ export interface DesignModel {
   active: number; // count of active members
   caps: DesignCap[]; // present caps only, in CAP_KINDS order
   notes: string[]; // warnings (token expired, daemon down, live)
-  /** Whether the server rejected our bearer — we're logged out (§view). */
+  /** Whether the server rejected our bearer — we're logged out (see "The view model"). */
   loggedOut: boolean;
   /** The single prominent red line to show, or null. Never fabricated data. */
   alert: string | null;

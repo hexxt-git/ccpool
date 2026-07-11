@@ -5,9 +5,9 @@ import type { LocalState, UsageSample } from "../types.js";
 export interface SnapshotInput {
   accountId: string | null;
   tokenExpired: boolean;
-  /** This machine's Claude account differs from the DB's bound account (§1.5). */
+  /** This machine's Claude account differs from the DB's bound account (the "Account binding" section). */
   accountConflict?: boolean;
-  /** The server rejected this daemon's bearer (revoked/rotated) — logged out (§13). */
+  /** The server rejected this daemon's bearer (revoked/rotated) — logged out (the "server" section). */
   authRejected?: boolean;
   /** ISO 8601 of the last fully-clean sync (fresh poll + landed ingest), or null. */
   lastSyncAt?: string | null;

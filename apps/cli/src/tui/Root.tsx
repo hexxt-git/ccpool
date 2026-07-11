@@ -28,7 +28,7 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   // The server rejected our bearer (revoked/rotated, or the ledger was reset).
   // Retrying can't fix a dead token, so log out: stop the doomed daemon, delete the
   // token file, drop it from the in-memory config (→ unconfigured), and send the
-  // user to the re-init wizard to re-authenticate (§13).
+  // user to the re-init wizard to re-authenticate (the "server" section).
   const handleLoggedOut = useCallback(() => {
     if (config) stopDaemonProcess(config);
     void logout();

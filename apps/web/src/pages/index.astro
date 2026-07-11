@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Button from "../components/Button.astro";
+import CopyCommand from "../components/CopyCommand.astro";
 import Visualization from "../components/Visualization.tsx";
 import PixelBullet from "../components/PixelBullet.astro";
 ---
@@ -71,36 +72,39 @@ import PixelBullet from "../components/PixelBullet.astro";
         </div>
 
         <!-- PLAY BUTTONS -->
-        <div
-          class="mt-2 flex flex-wrap gap-4 max-[640px]:w-full max-[640px]:flex-col max-[640px]:gap-3"
-        >
-          <div
-            class="retro-reveal max-[640px]:w-full"
-            data-stripes="2"
-            data-color="bg"
-            data-delay="0.8"
-          >
-            <Button
-              variant="primary"
-              href="/docs"
-              class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
-              >QUICK START</Button
+        <div class="mt-2 flex w-fit flex-col gap-3 max-[640px]:w-full">
+          <div class="flex flex-wrap gap-4 max-[640px]:flex-col max-[640px]:gap-3">
+            <div
+              class="retro-reveal max-[640px]:w-full"
+              data-stripes="2"
+              data-color="bg"
+              data-delay="0.8"
             >
+              <Button
+                variant="primary"
+                href="/docs"
+                class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
+                >QUICK START</Button
+              >
+            </div>
+            <div
+              class="retro-reveal max-[640px]:w-full"
+              data-stripes="2"
+              data-color="bg"
+              data-delay="0.95"
+            >
+              <Button
+                variant="outline"
+                href="https://github.com/hexxt-git/ccpool"
+                target="_blank"
+                class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
+                >STAR ON GITHUB
+                <span class="inline-block -translate-y-0.5 scale-150"> ⭐️ </span>
+              </Button>
+            </div>
           </div>
-          <div
-            class="retro-reveal max-[640px]:w-full"
-            data-stripes="2"
-            data-color="bg"
-            data-delay="0.95"
-          >
-            <Button
-              variant="outline"
-              href="https://github.com/hexxt-git/ccpool"
-              target="_blank"
-              class="max-[640px]:block max-[640px]:w-full max-[640px]:text-center"
-              >STAR ON GITHUB
-              <span class="inline-block -translate-y-0.5 scale-150"> ⭐️ </span>
-            </Button>
+          <div class="retro-reveal w-full" data-stripes="2" data-color="bg" data-delay="1.1">
+            <CopyCommand class="w-full" />
           </div>
         </div>
       </div>
@@ -152,11 +156,11 @@ import PixelBullet from "../components/PixelBullet.astro";
             <ul class="text-retro-card-body flex flex-col gap-2 leading-[1.05] text-[#999]">
               <li class="flex items-start gap-2">
                 <PixelBullet class="translate-y-2.5" />
-                <span>get it up in 5 minutes and never have to worry about it</span>
+                <span>setup in 2 minutes and never have to worry about it</span>
               </li>
               <li class="flex items-start gap-2">
                 <PixelBullet class="translate-y-2.5" />
-                <span>coordinated through any cloud database or server</span>
+                <span>coordinated through a central server or self hosted</span>
               </li>
               <li class="flex items-start gap-2">
                 <PixelBullet class="translate-y-2.5" />

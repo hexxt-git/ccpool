@@ -80,7 +80,7 @@ export interface MessageUsage {
  * or a resume/compaction re-prime that rebuilds a cold cache. The marker lets
  * attribution credit the otherwise-unexplained rise to that user instead of
  * `unknown`, but only as a **fallback**: any real {@link MessageUsage} in the same
- * interval always wins, so a marker can never dilute measured attribution (§7).
+ * interval always wins, so a marker can never dilute measured attribution (the "Attribution" section).
  */
 export interface UsageMarker {
   id: string; // PK; dedup key
@@ -197,7 +197,7 @@ export type DbInspection =
        * The Claude account this group's ledger is bound to
        * (`oauthAccount.accountUuid`), or null when unbound (created before
        * onboarding). A tick observed under a *different* account must not write
-       * here — see §1.5.
+       * here — see the "Account binding" section.
        */
       accountId: string | null;
     };
@@ -229,14 +229,14 @@ export interface LocalState {
     /**
      * True when this machine's Claude account differs from the account the shared
      * DB is bound to. The daemon halts all ledger writes while this holds, and the
-     * views surface it — a mismatch would interleave two different tanks (§1.5).
+     * views surface it — a mismatch would interleave two different tanks (the "Account binding" section).
      */
     conflict?: boolean;
     /**
      * True when the server rejected this daemon's bearer (unknown/revoked/rotated
      * token). The daemon's token is fixed at startup, so retrying can't fix it —
      * this latches until re-auth. Readers treat it as a logged-out state and route
-     * the user back to `init` (§13).
+     * the user back to `init` (the "server" section).
      */
     authRejected?: boolean;
   };

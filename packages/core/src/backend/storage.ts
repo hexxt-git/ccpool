@@ -160,7 +160,7 @@ export class StorageIngestSink implements IngestSink {
   }
 
   async ingest(batch: TickBatch, meta: IngestMeta): Promise<void> {
-    // Defensive re-check of §1.5 (the daemon already compares against its
+    // Defensive re-check of the "Account binding" section (the daemon already compares against its
     // bootstrap): both sides hydrated/bound and different -> nothing is written.
     if (
       this.bindingKnown &&
@@ -172,7 +172,7 @@ export class StorageIngestSink implements IngestSink {
     }
     // Reduce raw samples to envelope-raising points before anything is persisted;
     // messages/markers/resets pass through. A flat tick collapses to an empty batch
-    // here — so no-op ticks cost no write and no change-token bump (ADR-0006 §2).
+    // here — so no-op ticks cost no write and no change-token bump (report-on-change).
     const reduced = this.envelope.filter(batch);
     if (!isEmptyBatch(reduced)) {
       await this.storage.recordBatch(reduced);

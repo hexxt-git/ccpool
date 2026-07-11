@@ -43,7 +43,7 @@ export function formatAge(updatedAt: string | null, now: number = Date.now()): s
 /**
  * The per-user table: each participant's slice of the tank for each window. Rows
  * sum to the header percentage per column. `unknown` is always listed (it absorbs
- * unattributed activity). Shares are estimates from relative Code activity (§10).
+ * unattributed activity). Shares are estimates from relative Code activity (the "view model" section).
  */
 export function renderUserTable(shares: UserShare[], samples: UsageSample[]): string[] {
   const caps = CAP_KINDS.filter((c) => samples.some((s) => s.cap === c));

@@ -3,24 +3,54 @@ import Layout from "./Layout.astro";
 
 const { frontmatter } = Astro.props;
 
-const pathname = Astro.url.pathname;
-// Match both with and without trailing slash, as well as dev/prod path differences
-const isIntroduction = pathname.endsWith("/docs") || pathname.endsWith("/docs/");
-const isInstallation =
-  pathname.endsWith("/docs/installation") || pathname.endsWith("/docs/installation/");
-const isPrivacy =
-  pathname.endsWith("/docs/legal/privacy") || pathname.endsWith("/docs/legal/privacy/");
-const isTerms = pathname.endsWith("/docs/legal/terms") || pathname.endsWith("/docs/legal/terms/");
-const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs/legal/dmca/");
+// The docs nav, as data. Add a page by adding one entry — no per-page markup.
+type NavItem = { href: string; label: string };
+type NavSection = { heading: string; items: NavItem[] };
+
+const navSections: NavSection[] = [
+  {
+    heading: "Getting Started",
+    items: [
+      { href: "/docs", label: "Introduction" },
+      { href: "/docs/installation", label: "Installation" },
+    ],
+  },
+  {
+    heading: "Algorithm (technical)",
+    items: [
+      { href: "/docs/algorithm", label: "How it works" },
+      { href: "/docs/algorithm/observation", label: "Observation" },
+      { href: "/docs/algorithm/attribution", label: "Attribution" },
+      { href: "/docs/algorithm/views", label: "The view model" },
+      { href: "/docs/algorithm/storage-and-server", label: "Storage & server" },
+      { href: "/docs/algorithm/resource-usage", label: "Resource usage" },
+    ],
+  },
+  {
+    heading: "Legal Policies",
+    items: [
+      { href: "/docs/legal/privacy", label: "Privacy Policy" },
+      { href: "/docs/legal/terms", label: "Terms of Use" },
+      { href: "/docs/legal/dmca", label: "DMCA Notice" },
+    ],
+  },
+];
+
+// Normalize away the trailing slash (dev/prod differ) before matching.
+const normalize = (p: string) => (p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p);
+const currentPath = normalize(Astro.url.pathname);
 ---
 
 <Layout title={`${frontmatter.title} — ccpool Docs`}>
   <main class="mx-auto w-full max-w-[1200px] flex-1 p-10 max-[640px]:px-4 max-[640px]:py-8">
     <div class="grid grid-cols-1 gap-8 md:grid-cols-[280px_1fr]">
       <!-- Left Column: Documentation Navigation -->
-      <aside class="flex flex-col gap-4">
-        <!-- Back to home link -->
-        <div>
+      <!-- Desktop: stick below the 60px header, cap height to the viewport, scroll internally -->
+      <aside
+        class="flex flex-col gap-4 md:sticky md:top-[104px] md:max-h-[calc(100vh-120px)] md:self-start"
+      >
+        <!-- Back to home link + readable-font toggle (docs content only) -->
+        <div class="flex items-center justify-between gap-2">
           <a
             href="/"
             class="font-vt text-retro-body hover:text-retro-orange group flex select-none items-center gap-2 text-[#888] no-underline transition-colors"
@@ -36,131 +66,65 @@ const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs
             </svg>
             RETURN HOME
           </a>
+          <button
+            id="docs-font-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Toggle a more readable font for the documentation text"
+            class="border-retro-border bg-retro-card font-press hover:text-retro-orange hover:border-retro-orange flex h-9 w-12 shrink-0 cursor-pointer select-none items-center justify-center border-2 text-[11px] uppercase leading-none text-[#888] transition-colors"
+          >
+            <span aria-hidden="true">Aa</span>
+          </button>
         </div>
 
         <!-- Sidebar Navigation Card -->
-        <nav class="border-retro-border bg-retro-card flex flex-col gap-4 border-2 p-6">
-          <!-- Getting Started Section -->
-          <div class="flex flex-col gap-2">
-            <h2 class="font-press select-none text-[10px] uppercase tracking-wider text-[#555]">
-              Getting Started
-            </h2>
-            <ul class="font-vt flex flex-col gap-2 text-[20px]">
-              <li>
-                <a
-                  href="/docs"
-                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
-                    isIntroduction ? "text-retro-orange" : "text-[#888]"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 8 8"
-                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
-                      isIntroduction ? "opacity-100" : "opacity-0"
-                    }`}
-                    shape-rendering="crispEdges"
-                  >
-                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
-                  </svg>
-                  INTRODUCTION
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/docs/installation"
-                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
-                    isInstallation ? "text-retro-orange" : "text-[#888]"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 8 8"
-                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
-                      isInstallation ? "opacity-100" : "opacity-0"
-                    }`}
-                    shape-rendering="crispEdges"
-                  >
-                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
-                  </svg>
-                  INSTALLATION
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          <!-- Legal Section -->
-          <div class="flex flex-col gap-2 border-t border-[#222] pt-2">
-            <h2 class="font-press select-none text-[10px] uppercase tracking-wider text-[#555]">
-              Legal Policies
-            </h2>
-            <ul class="font-vt flex flex-col gap-2 text-[20px]">
-              <li>
-                <a
-                  href="/docs/legal/privacy"
-                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
-                    isPrivacy ? "text-retro-orange" : "text-[#888]"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 8 8"
-                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
-                      isPrivacy ? "opacity-100" : "opacity-0"
-                    }`}
-                    shape-rendering="crispEdges"
-                  >
-                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
-                  </svg>
-                  PRIVACY POLICY
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/docs/legal/terms"
-                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
-                    isTerms ? "text-retro-orange" : "text-[#888]"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 8 8"
-                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
-                      isTerms ? "opacity-100" : "opacity-0"
-                    }`}
-                    shape-rendering="crispEdges"
-                  >
-                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
-                  </svg>
-                  TERMS OF USE
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/docs/legal/dmca"
-                  class={`flex items-center no-underline transition-colors hover:text-retro-orange ${
-                    isDmca ? "text-retro-orange" : "text-[#888]"
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 8 8"
-                    class={`h-3.5 w-3.5 fill-current mr-2 shrink-0 transition-opacity ${
-                      isDmca ? "opacity-100" : "opacity-0"
-                    }`}
-                    shape-rendering="crispEdges"
-                  >
-                    <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z"></path>
-                  </svg>
-                  DMCA NOTICE
-                </a>
-              </li>
-            </ul>
-          </div>
+        <nav
+          class="border-retro-border bg-retro-card flex flex-col gap-4 border-2 p-6 md:min-h-0 md:overflow-y-auto"
+        >
+          {
+            navSections.map((section, i) => (
+              <div class={`flex flex-col gap-2 ${i > 0 ? "border-t border-[#222] pt-2" : ""}`}>
+                <h2 class="font-press select-none text-[10px] uppercase tracking-wider text-[#555]">
+                  {section.heading}
+                </h2>
+                <ul class="font-vt flex flex-col gap-2 text-[20px]">
+                  {section.items.map((item) => {
+                    const active = currentPath === item.href;
+                    return (
+                      <li>
+                        <a
+                          href={item.href}
+                          class={`hover:text-retro-orange flex items-center uppercase no-underline transition-colors ${
+                            active ? "text-retro-orange" : "text-[#888]"
+                          }`}
+                        >
+                          <svg
+                            viewBox="0 0 8 8"
+                            class={`mr-2 h-3.5 w-3.5 shrink-0 fill-current transition-opacity ${
+                              active ? "opacity-100" : "opacity-0"
+                            }`}
+                            shape-rendering="crispEdges"
+                          >
+                            <path d="M0,0h2v8h-2z M2,1h2v6h-2z M4,2h2v4h-2z M6,3h2v2h-2z" />
+                          </svg>
+                          {item.label}
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))
+          }
         </nav>
       </aside>
 
       <!-- Right Column: Main Content -->
       <article
-        class="border-retro-border bg-retro-card flex flex-col gap-6 overflow-hidden border-2 p-8 max-[640px]:p-5"
+        class="docs-article border-retro-border bg-retro-card flex flex-col gap-6 overflow-hidden border-2 p-8 max-[640px]:p-5"
       >
         <h1
-          class="font-press text-retro-h1 text-retro-orange border-retro-border border-b pb-5 uppercase leading-[1.4] tracking-[-0.5px] max-[640px]:text-[20px] max-[480px]:text-[16px]"
+          class="docs-title font-press text-retro-h1 text-retro-orange border-retro-border border-b pb-5 uppercase leading-[1.4] tracking-[-0.5px] max-[640px]:text-[20px] max-[480px]:text-[16px]"
         >
           {frontmatter.title}
         </h1>
@@ -175,7 +139,7 @@ const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs
 
 <style is:global>
   .docs-content h2 {
-    font-family: "Press Start 2P", monospace;
+    font-family: var(--font-press);
     font-size: var(--text-retro-card-title);
     color: var(--color-retro-yellow);
     margin-top: 1.85rem;
@@ -185,7 +149,7 @@ const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs
     line-height: 1.4;
   }
   .docs-content h3 {
-    font-family: "Press Start 2P", monospace;
+    font-family: var(--font-press);
     font-size: 10px;
     color: var(--color-retro-orange);
     margin-top: 1.4rem;
@@ -218,7 +182,7 @@ const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs
   }
   .docs-content code {
     font-family: var(--font-mono);
-    font-size: 13.5px;
+    font-size: 15px;
     background-color: #161616;
     color: var(--color-retro-yellow);
     padding: 0.1rem 0.3rem;
@@ -259,4 +223,130 @@ const isDmca = pathname.endsWith("/docs/legal/dmca") || pathname.endsWith("/docs
     font-size: inherit;
     line-height: inherit;
   }
+  /* Tables: hard pixel borders, compact padding, horizontal scroll when wide */
+  .docs-content table {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    border: 2px solid var(--color-retro-border);
+    margin-top: 0.4rem;
+    margin-bottom: 1rem;
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .docs-content th,
+  .docs-content td {
+    border: 1px solid var(--color-retro-border);
+    padding: 0.35rem 0.65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  .docs-content thead th {
+    background-color: #161616;
+    color: var(--color-retro-yellow);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .docs-content tbody tr:nth-child(even) {
+    background-color: #131313;
+  }
+  /* Code inside cells shouldn't double up the boxed look */
+  .docs-content td code,
+  .docs-content th code {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Readable-font toggle: smooth (Inter) applied ONLY to the article    */
+  /* content — the sidebar, nav, header, and footer stay pixel-perfect.  */
+  /* ------------------------------------------------------------------ */
+  .docs-article.is-smooth .docs-title {
+    font-family: var(--font-smooth);
+    text-transform: none;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .docs-article.is-smooth .docs-content {
+    font-family: var(--font-smooth);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .docs-article.is-smooth .docs-content h2 {
+    font-family: var(--font-smooth);
+    font-size: 26px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: -0.2px;
+    line-height: 1.3;
+    margin-top: 2.2rem;
+  }
+  .docs-article.is-smooth .docs-content h3 {
+    font-family: var(--font-smooth);
+    font-size: 18px;
+    font-weight: 600;
+    text-transform: none;
+    line-height: 1.35;
+  }
+  .docs-article.is-smooth .docs-content code,
+  .docs-article.is-smooth .docs-content pre,
+  .docs-article.is-smooth .docs-content pre code {
+    font-family: var(--font-smooth-mono);
+  }
+  .docs-article.is-smooth .docs-content code {
+    font-size: 14px;
+  }
+  .docs-article.is-smooth .docs-content pre {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .docs-article.is-smooth .docs-content table {
+    font-size: 15px;
+  }
+  .docs-article.is-smooth .docs-content thead th {
+    text-transform: none;
+  }
+  /* Toggle button: highlighted + previews the smooth font when smooth mode is on */
+  #docs-font-toggle[aria-pressed="true"] {
+    color: var(--color-retro-orange);
+    border-color: var(--color-retro-orange);
+    font-family: var(--font-smooth);
+    font-size: 15px;
+    text-transform: none;
+  }
 </style>
+
+<script is:inline>
+  (function () {
+    const KEY = "ccpool-docs-readable-font";
+    function apply() {
+      const on = localStorage.getItem(KEY) === "1";
+      const article = document.querySelector(".docs-article");
+      const btn = document.getElementById("docs-font-toggle");
+      if (article) article.classList.toggle("is-smooth", on);
+      if (btn) btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    function wire() {
+      const btn = document.getElementById("docs-font-toggle");
+      if (btn && !btn.dataset.wired) {
+        btn.dataset.wired = "1";
+        btn.addEventListener("click", function () {
+          const on = localStorage.getItem(KEY) === "1";
+          localStorage.setItem(KEY, on ? "0" : "1");
+          apply();
+        });
+      }
+      apply();
+    }
+    // Re-apply immediately after a view-transition swap (avoids a flash), and
+    // re-wire the freshly rendered button on each page load.
+    document.addEventListener("astro:after-swap", apply);
+    document.addEventListener("astro:page-load", wire);
+    wire();
+  })();
+</script>

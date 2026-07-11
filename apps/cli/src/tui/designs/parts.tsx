@@ -287,7 +287,7 @@ export function Header({
               synced <Text color={pal.value}>{model.sync}</Text>
             </>
           )}
-          {/* Only surfaced when down — the TUI is bringing it back up (§App). */}
+          {/* Only surfaced when down — the TUI is bringing it back up (the TUI App component). */}
           {!model.daemonRunning &&
             chip(
               true,

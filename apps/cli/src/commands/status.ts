@@ -7,7 +7,7 @@ import { renderStatusLines } from "../lib/status-render.js";
  * One-shot snapshot of the shared account tank. Renders the `status` design as
  * plain string lines: colored when stdout is a terminal, plaintext when piped or
  * redirected (so `status | grep` and `status > file` stay clean). Sized to the
- * terminal width, degrading on narrow widths (§10).
+ * terminal width, degrading on narrow widths (the "view model" section).
  */
 export async function runStatus(): Promise<void> {
   const ctx = await requireInit();

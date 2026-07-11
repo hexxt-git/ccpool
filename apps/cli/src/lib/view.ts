@@ -20,7 +20,7 @@ import { ccpoolDir } from "./config.js";
 /** Where the numbers on screen came from. */
 export type ViewOrigin = "db" | "state" | "live" | "none";
 
-/** The single model `status` and `tui` both render from (§10). */
+/** The single model `status` and `tui` both render from (the "view model" section). */
 export interface ViewModel {
   samples: UsageSample[];
   shares: UserShare[]; // per-person split of each cap window
@@ -33,7 +33,7 @@ export interface ViewModel {
   loggedOut: boolean;
   daemonRunning: boolean;
   tokenExpired: boolean;
-  /** This machine's Claude account differs from the ledger's — daemon halted writes (§1.5). */
+  /** This machine's Claude account differs from the ledger's — daemon halted writes (the "Account binding" section). */
   accountConflict: boolean;
   /** The observed account's id/email (never the person), from local state. */
   account: string | null;

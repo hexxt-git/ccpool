@@ -166,7 +166,7 @@ export function InitScreen({
       setCommit("error");
       return;
     }
-    // We just minted a fresh token, so any prior `authRejected` latch (§13) is stale.
+    // We just minted a fresh token, so any prior `authRejected` latch (the "server" section) is stale.
     // Clear it before the status screen reads it, or gatherView loops us back here.
     clearAuthRejected(res.config);
     spawnDaemon(res.config);

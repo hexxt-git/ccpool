@@ -45,7 +45,7 @@ The ledger lives on a ccpool server. By default that's the hosted one, so there'
 ## Quick Start
 
 ```bash
-npm install -g ccpool   # or run it once with: npx ccpool
+npm install -g ccpool   # or run it once with: npx ccpool@latest
 ccpool                  # onboarding, then the live view
 ```
 

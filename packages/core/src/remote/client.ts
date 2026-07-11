@@ -164,7 +164,7 @@ export class HttpIngestSink implements IngestSink {
     );
     if (res.ok) return;
     if (res.status === 409) {
-      // The server knows the binding; it refused the tick outright (§1.5). We
+      // The server knows the binding; it refused the tick outright (the "Account binding" section). We
       // don't learn the bound id — the daemon flags the conflict and drops the
       // batch, and recovery is automatic if the account signs back in.
       await res.body?.cancel().catch(() => {});

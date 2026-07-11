@@ -7,7 +7,7 @@ export type { MemberSummary };
 
 /**
  * Aggregate raw messages into one row per name. Pure: tokens sum every component
- * (cache included — raw input/output undercount, §"only new activity"), and
+ * (cache included — raw input/output undercount, see "JSONL ingest"), and
  * `lastActivityAt` is the max timestamp seen. Attribution stays separate; this is
  * just the measured-activity rollup the views show as `tokens`/`active`.
  */

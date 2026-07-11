@@ -15,7 +15,7 @@ export interface Credentials {
   rateLimitTier: string | null;
 }
 
-/** Always verify before using the token (§9). Treats missing expiry as expired. */
+/** Always verify before using the token (the "Identity" section). Treats missing expiry as expired. */
 export function isTokenExpired(
   c: Pick<Credentials, "expiresAt">,
   now: number = Date.now()

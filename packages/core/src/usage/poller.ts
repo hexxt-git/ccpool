@@ -65,7 +65,7 @@ export interface PollOptions {
 
 /**
  * Read the account-wide tank. Caller must have verified `now < expiresAt` first
- * (§9). 401 → {@link UsageAuthError}; other non-2xx → generic Error for backoff.
+ * (the "Identity" section). 401 → {@link UsageAuthError}; other non-2xx → generic Error for backoff.
  */
 export async function pollUsage(
   accessToken: string,

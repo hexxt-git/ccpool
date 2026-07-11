@@ -135,7 +135,7 @@ describe("Daemon.tick", () => {
   it("latches account.authRejected and never marks a clean sync when the sink rejects the bearer (401)", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     // A sink whose bootstrap is fine but whose ingest is always auth-rejected —
-    // the shared-mode server returning 401 for a revoked/rotated token (§13).
+    // the shared-mode server returning 401 for a revoked/rotated token (the "server" section).
     const rejectingSink: IngestSink = {
       bootstrap: async () => ({ accountId: null, samples: [] }),
       ingest: async () => {

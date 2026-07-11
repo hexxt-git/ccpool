@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** Per-account file locations, keyed by a hash of the Claude config dir (§8). */
+/** Per-account file locations, keyed by a hash of the Claude config dir (see "The run loop"). */
 export interface DaemonPaths {
   pidFile: string;
   stateFile: string;

@@ -44,7 +44,7 @@ export function mono(
         <Text color={M.lo}>
           synced <Text color={M.hi}>{model.sync}</Text>
         </Text>
-        {/* Only surfaced when down — the TUI is bringing it back up (§App). */}
+        {/* Only surfaced when down — the TUI is bringing it back up (the TUI App component). */}
         {!model.daemonRunning ? (
           <Text color={M.lo}>
             daemon{" "}

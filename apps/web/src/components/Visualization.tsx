@@ -298,7 +298,7 @@ function ClawdUser({
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
-      className="absolute flex flex-col items-center overflow-visible"
+      className="viz-reveal absolute flex flex-col items-center overflow-visible"
       style={{
         left: user.left * scale,
         top: user.top * scale,
@@ -357,7 +357,7 @@ function ClawdUser({
       {/* Retro reveal masking overlay: slides off to reveal avatar */}
       {!revealDone && connected && (
         <motion.div
-          className="pointer-events-none absolute z-30"
+          className="viz-mask pointer-events-none absolute z-30"
           style={{
             backgroundColor: "var(--color-retro-bg)",
             transformOrigin: "right",
@@ -572,7 +572,7 @@ export default function Visualization() {
       >
         {/* DOTS */}
         <svg
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+          className="viz-dots pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
           style={{
             width: `${640 * scale}px`,
             height: `${340 * scale}px`,
@@ -609,6 +609,7 @@ export default function Visualization() {
           }}
         >
           <motion.div
+            className="viz-reveal"
             initial={{ clipPath: "inset(0 100% 0 0)", opacity: 0 }}
             animate={revealed ? { clipPath: "inset(0 0% 0 0)", opacity: 1 } : {}}
             transition={{ delay: 0.1, duration: 0.2, ease: "linear" }}
@@ -640,7 +641,7 @@ export default function Visualization() {
 
             return (
               <motion.div
-                className="absolute flex items-center justify-center overflow-hidden"
+                className="viz-reveal absolute flex items-center justify-center overflow-hidden"
                 style={{
                   left: `${58 * scale}px`,
                   top: `${63 * scale}px`,

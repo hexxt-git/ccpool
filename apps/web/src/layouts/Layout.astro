@@ -54,6 +54,33 @@ const canonicalURL = Astro.site
     <meta property="twitter:description" content={description} />
     <meta property="twitter:image" content={image} />
     <ClientRouter />
+
+    <!--
+      No-JS fallback: several elements are server-rendered in their pre-animation
+      hidden state (feature cards start at opacity:0; the Visualization island and
+      footer stripes are rendered by framer-motion at opacity:0 / clip-path /
+      scaleX(0) awaiting hydration). With scripts disabled the reveal never runs,
+      so force that content to its final, static state. `.retro-reveal` text needs
+      nothing — JS only layers stripe overlays on top of already-visible content.
+    -->
+    <noscript>
+      <style>
+        .feature-reveal {
+          opacity: 1 !important;
+        }
+        .viz-reveal {
+          opacity: 1 !important;
+          clip-path: none !important;
+        }
+        .viz-mask,
+        .viz-dots {
+          display: none !important;
+        }
+        .footer-stripe {
+          transform: none !important;
+        }
+      </style>
+    </noscript>
   </head>
   <body class="bg-retro-bg text-retro-fg font-vt flex min-h-screen flex-col overflow-x-hidden">
     <div transition:persist="header" class="bg-retro-bg sticky top-0 z-50 w-full">
@@ -176,5 +203,6 @@ const canonicalURL = Astro.site
       // so a single listener covers both cases without double-firing.
       document.addEventListener("astro:page-load", initReveals);
     </script>
+
   </body>
 </html>

@@ -78,7 +78,7 @@ const LOCK_GUARD_INTERVAL_MS = 5_000;
 
 /**
  * How recently this machine must have produced Code activity for an
- * otherwise-unexplained tank rise to be marked as its user's (§7). A rise inside
+ * otherwise-unexplained tank rise to be marked as its user's (the "Attribution" section). A rise inside
  * this window of the last local message is treated as that user's untracked
  * overhead (endpoint-lagged tail, or a resume/compaction re-prime the transcript
  * under-reports). Beyond it, the rise stays `unknown` — the conservative bias, so
@@ -141,7 +141,7 @@ export class Daemon {
   private failures = 0;
   private readonly log: Logger;
   private readonly reader: JsonlReader;
-  /** The Claude account the ledger is bound to (§1.5); null = unbound. */
+  /** The Claude account the ledger is bound to (the "Account binding" section); null = unbound. */
   private boundAccount: string | null = null;
   /** False until we've read the binding — while false we never enforce. */
   private boundAccountKnown = false;
@@ -150,7 +150,7 @@ export class Daemon {
   /**
    * Latched once the server rejects our bearer (revoked/rotated). The token is
    * fixed at startup, so this can never clear without a restart — surfaced in
-   * `state.json` so the TUI logs the user out and routes to `init` (§13).
+   * `state.json` so the TUI logs the user out and routes to `init` (the "server" section).
    */
   private authRejected = false;
   /**
@@ -161,7 +161,7 @@ export class Daemon {
    */
   private lastSyncAt: string | null = null;
   // Most-recent local Code activity, for deciding when an unexplained tank rise is
-  // this machine's untracked overhead (activity marker, §7). Reset on restart —
+  // this machine's untracked overhead (activity marker, the "Attribution" section). Reset on restart —
   // the reader re-baselines at EOF, so we never mark against stale history.
   private lastLocalActivityMs: number | null = null;
   private lastLocalUser: string | null = null;
@@ -250,7 +250,7 @@ export class Daemon {
 
     // Guard: never write into a ledger bound to a *different* Claude account —
     // interleaving two tanks in one `usage_samples` table corrupts attribution and
-    // reset detection (§1.5). We still poll so the local user sees their own tank in
+    // reset detection (the "Account binding" section). We still poll so the local user sees their own tank in
     // state.json, but skip the ledger write while the conflict holds.
     let accountConflict = this.isAccountConflict(account);
     if (accountConflict) {
@@ -269,7 +269,7 @@ export class Daemon {
     const batch = emptyBatch();
 
     if (!creds || isTokenExpired(creds, this.nowMs())) {
-      // Skip the poll; Claude Code refreshes on its next run (§8). Not an error.
+      // Skip the poll; Claude Code refreshes on its next run (see "Identity"). Not an error.
       tokenExpired = true;
       this.log.debug("token missing/expired — skipping poll");
     } else {
@@ -288,7 +288,7 @@ export class Daemon {
           this.log.info(`reset detected on ${e.cap} (was ${e.previousPct}%)`);
         }
         batch.resets.push(...resets);
-        // Report-on-change (ADR-0006 §3): only send samples that move the tank vs
+        // Report-on-change: only send samples that move the tank vs
         // the last reading for that cap (or that accompany a reset). Flat repeats
         // are exactly what the server's envelope filter would discard, so omitting
         // them changes the stored trajectory not at all — it only spares the
@@ -338,7 +338,7 @@ export class Daemon {
       // yet this machine's user was driving Code moments ago. That gap is real
       // local work the transcript doesn't reflect in time (an endpoint-lagged tail,
       // or a resume/compaction re-prime). Credit the rise to that user rather than
-      // `unknown` (§7). We decide *before* folding in this tick's activity.
+      // `unknown` (the "Attribution" section). We decide *before* folding in this tick's activity.
       if (
         rows.length === 0 &&
         anyCapRose(prevSamples, samples) &&
@@ -442,7 +442,7 @@ export class Daemon {
   }
 
   /**
-   * Startup: bootstrap the sink, learn the binding (§1.5), and seed
+   * Startup: bootstrap the sink, learn the binding (the "Account binding" section), and seed
    * the previous reading so a reset that happened while this daemon was down is
    * caught (and recorded) on the very first poll — not silently missed because
    * `prev` started empty. Skip the seed on an account conflict: those samples

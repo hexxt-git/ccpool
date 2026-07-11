@@ -20,9 +20,10 @@ The design specifications and custom animation language for the "CCPOOL" marketi
 
 ## 3. Typography
 
-- **Font Family:** Strictly pixel/bitmap-style fonts across the site.
+- **Font Family:** Strictly pixel/bitmap-style fonts across the site — no vector/anti-aliased typefaces anywhere, including code. **One deliberate exception:** the docs pages carry an opt-in "readable font" toggle (the `Aa` button by RETURN HOME) that swaps _only the article content_ to a smooth stack (`--font-smooth` = Inter, `--font-smooth-mono`) for accessibility. It is off by default, persisted per-visitor in `localStorage`, and scoped to `.docs-article.is-smooth` — the header, sidebar, nav, and footer stay pixel-perfect. Nothing else on the site may go vector.
 - **Heading Font:** `Press Start 2P` (`font-press`) for H1, buttons, and card titles.
 - **Body Font:** `VT323` (`font-vt`) for paragraphs, nav links, and secondary text.
+- **Monospace / Code Font:** `Departure Mono` (`font-mono`) for code blocks and inline `code` (e.g. in the docs). It's a pixel/bitmap _monospace_ font, so it keeps the retro aesthetic while preserving code alignment and box-drawing glyphs (the ASCII pipeline diagram). Self-hosted (`/fonts/DepartureMono-Regular.woff2`, OFL) rather than loaded from Google Fonts, which has no true pixel monospace; `VT323` is the fallback. Never use a vector monospace (IBM Plex Mono, ui-monospace, etc.) — it breaks the pixel rule.
 - **Hierarchy:**
   - **H1 (Hero):** Large, all-caps, chunky pixel font with tight negative tracking (`-1px`).
   - **H2 (Features):** Medium size, colored, all-caps.

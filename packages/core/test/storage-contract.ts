@@ -4,7 +4,7 @@ import type { TickBatch } from "../src/types.js";
 
 /**
  * The `Storage` contract for the one adapter (`LibsqlStorage`): proves its
- * correctness, the clean-DB enforcement (§15), and — via `pair()` — that
+ * correctness, the clean-DB enforcement (the "Group inspection" section), and — via `pair()` — that
  * `group_id` isolates two groups sharing one physical database.
  */
 export interface ContractHarness {

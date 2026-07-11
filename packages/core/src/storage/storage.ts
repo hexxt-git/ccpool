@@ -50,7 +50,7 @@ export const DEFAULT_GROUP_ID = "default";
  */
 export interface Storage {
   inspect(): Promise<DbInspection>; // empty | ccpool (for this group)
-  /** Create tables + write ccpool_meta, binding the ledger to `accountId` (§1.5). */
+  /** Create tables + write ccpool_meta, binding the ledger to `accountId` (the "Account binding" section). */
   initializeSchema(accountId?: string | null): Promise<void>;
   /** Claim an unbound ledger for `accountId` (only sets it when currently null). */
   bindAccount(accountId: string): Promise<void>;
@@ -91,7 +91,7 @@ export interface Storage {
   getResetsSince(since: string): Promise<ResetEvent[]>;
   /** Raw measured Code activity since `since`, for time-correlated attribution. */
   getMessageUsageSince(since: string): Promise<MessageUsage[]>;
-  /** Activity markers since `since` — fill rises with no measured activity (§7). */
+  /** Activity markers since `since` — fill rises with no measured activity (the "Attribution" section). */
   getUsageMarkersSince(since: string): Promise<UsageMarker[]>;
 
   // history — immutable summaries of completed cap cycles (ADR-0002/0005)

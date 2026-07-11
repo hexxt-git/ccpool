@@ -63,7 +63,7 @@ export function spawnDaemon(cfg: Config): { pid: number } | { already: number } 
 /**
  * Clear the `authRejected` latch in each config dir's `state.json`.
  *
- * The daemon latches `authRejected` when the server rejects its bearer (§13); it
+ * The daemon latches `authRejected` when the server rejects its bearer (the "server" section); it
  * lives in `state.json` until the daemon's next clean write. On a fresh re-init that
  * latch is stale — a new, valid token has just been minted — but the TUI reads
  * `state.json` every 2s and, seeing the stale latch, routes straight back to the

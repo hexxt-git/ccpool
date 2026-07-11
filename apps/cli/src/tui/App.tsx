@@ -41,7 +41,7 @@ export function App({
   viewSource: ViewSource;
   /** When set, `r` opens the re-init screen and the footer advertises it. */
   onConfigure?: () => void;
-  /** The server rejected our bearer (revoked/rotated) — hand back to re-init (§13). */
+  /** The server rejected our bearer (revoked/rotated) — hand back to re-init (the "server" section). */
   onLoggedOut?: () => void;
 }): React.ReactElement {
   const { exit } = useApp();

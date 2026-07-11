@@ -13,7 +13,7 @@ import { resolveServerUrl, validateServerUrl } from "./backend.js";
  * Shared, non-interactive setup core used by the TUI onboarding wizard and the
  * `init` command. It resolves the Claude account, joins (or creates) the group on
  * the ccpool server, and saves the config + bearer token. Account binding is the
- * server's job (ALGORITHM.md §1.5) — the client only ever speaks HTTP.
+ * server's job (algorithm docs, Observation → "Account binding") — the client only ever speaks HTTP.
  */
 
 export type SharedJoinResult =
@@ -93,7 +93,7 @@ export async function applySharedJoin(opts: {
 }): Promise<SharedJoinResult> {
   const configDir = resolveConfigDir();
   // The group is located and bound by the Claude accountUuid — resolved locally,
-  // never typed. Creation requires an onboarded account (§1.5, server-side).
+  // never typed. Creation requires an onboarded account (the "Account binding" section, server-side).
   const acct = await resolveAccount(configDir);
   if (!acct?.hydrated) {
     return {

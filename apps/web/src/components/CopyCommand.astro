@@ -1,0 +1,96 @@
+---
+interface Props {
+  command?: string;
+  class?: string;
+}
+
+const { command = "npx ccpool@latest", class: className = "" } = Astro.props;
+---
+
+<div
+  class:list={[
+    "copy-command border-retro-outline bg-retro-card text-retro-fg flex items-center justify-between gap-3 border-2 px-[14px] py-[9px]",
+    className,
+  ]}
+  data-command={command}
+>
+  <code class="font-vt text-retro-label select-text whitespace-nowrap tracking-[1px]">
+    <span class="text-retro-orange select-none">$</span>{" "}<span class="cmd-text">{command}</span>
+  </code>
+  <button
+    type="button"
+    class="copy-trigger text-retro-fg/60 hover:text-retro-fg group -m-1 shrink-0 cursor-pointer p-1 transition-colors"
+    aria-label={`Copy ${command} to clipboard`}
+  >
+    <!-- Copy / check icon (pixel-art, swapped on copy) -->
+    <svg
+      class="copy-icon h-4 w-4 fill-current"
+      viewBox="0 0 16 16"
+      shape-rendering="crispEdges"
+      aria-hidden="true"
+    >
+      <path
+        d="M4,1h8v1h-8z M4,2h1v9h-1z M11,2h1v1h-1z M2,3h2v1h-2z M12,3h1v9h-1z M2,4h1v9h-1z
+        M12,12h1v1h-1z M5,11h7v1h-7z M2,13h1v1h-1z M9,13h4v1h-4z M2,14h8v1h-8z"
+      ></path>
+    </svg>
+    <svg
+      class="check-icon text-retro-green hidden h-4 w-4 fill-current"
+      viewBox="0 0 16 16"
+      shape-rendering="crispEdges"
+      aria-hidden="true"
+    >
+      <path
+        d="M13,3h2v2h-2z M11,5h2v2h-2z M9,7h2v2h-2z M7,9h2v2h-2z M5,11h2v2h-2z M1,7h2v2h-2z M3,9h2v2h-2z"
+      ></path>
+    </svg>
+  </button>
+</div>
+
+<script>
+  const COPIED_MS = 1600;
+
+  const wireCopyButtons = () => {
+    document.querySelectorAll<HTMLElement>(".copy-command").forEach((box) => {
+      if (box.dataset.wired) return;
+      box.dataset.wired = "true";
+
+      const trigger = box.querySelector<HTMLButtonElement>(".copy-trigger");
+      const copyIcon = box.querySelector<SVGElement>(".copy-icon");
+      const checkIcon = box.querySelector<SVGElement>(".check-icon");
+      let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+      trigger?.addEventListener("click", async () => {
+        const command = box.dataset.command ?? "";
+        try {
+          await navigator.clipboard.writeText(command);
+        } catch {
+          // Fallback for insecure contexts / older browsers.
+          const ta = document.createElement("textarea");
+          ta.value = command;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand("copy");
+          } catch {
+            /* give up silently */
+          }
+          ta.remove();
+        }
+
+        copyIcon?.classList.add("hidden");
+        checkIcon?.classList.remove("hidden");
+        clearTimeout(resetTimer);
+        resetTimer = setTimeout(() => {
+          checkIcon?.classList.add("hidden");
+          copyIcon?.classList.remove("hidden");
+        }, COPIED_MS);
+      });
+    });
+  };
+
+  // Fires on initial load and after every view transition.
+  document.addEventListener("astro:page-load", wireCopyButtons);
+</script>

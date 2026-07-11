@@ -18,7 +18,7 @@ const MAX_INGEST_BYTES = 1024 * 1024;
 /** lastUsedAt is bookkeeping — write it at most once a minute per token. */
 const TOKEN_TOUCH_INTERVAL_MS = 60_000;
 /**
- * In-process token→identity cache (ADR-0006 §1). Steady-state ingest/view under
+ * In-process token→identity cache. Steady-state ingest/view under
  * thousands of daemons would otherwise do a `resolveToken` DB read every request;
  * this serves the hot path from RAM. A short TTL bounds staleness — a rebind
  * (`accountId` null→uuid) or a rotated/revoked token self-heals within it — so no
@@ -259,7 +259,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     const group = c.get("group");
     const member = c.get("member");
 
-    // §1.5 server-side: a tick observed under a *different* Claude account never
+    // the "Account binding" section server-side: a tick observed under a *different* Claude account never
     // lands in this group's ledger. A null accountId is an unhydrated sender (accepted
     // — an authenticated member can only ever write into their own group's ledger).
     if (body.accountId !== null && body.accountId !== group.accountId) {

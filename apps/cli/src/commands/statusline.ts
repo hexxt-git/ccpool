@@ -5,7 +5,7 @@ import { ccpoolDir, loadConfig } from "../lib/config.js";
 
 /**
  * Compact one-liner for Claude Code's status bar. Reads `state.json` only — cheap,
- * never blocks, no network (§5). Example:
+ * never blocks, no network (the "state.json" section). Example:
  *   `◐ 5h 42% · wk 68% · you sam · ● db`
  */
 export async function runStatusline(): Promise<void> {
@@ -37,7 +37,7 @@ export async function runStatusline(): Promise<void> {
   }
 
   // A revoked/rotated bearer can't be retried — surface it loudest so the status
-  // bar tells the user to re-init rather than silently showing a stale tank (§13).
+  // bar tells the user to re-init rather than silently showing a stale tank (the "server" section).
   if (state.account.authRejected) {
     process.stdout.write(`⚠ ccpool logged out · run \`ccpool init\` · you ${cfg.name}\n`);
     return;

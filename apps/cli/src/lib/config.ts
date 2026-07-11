@@ -13,7 +13,7 @@ export function configPath(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
- * The server bearer token is kept apart from the committed config (§12), in its
+ * The server bearer token is kept apart from the committed config (the "two-password trust model" section), in its
  * own 0600 file — never in config.json.
  */
 function tokenPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -64,7 +64,7 @@ async function readToken(env: NodeJS.ProcessEnv): Promise<string | undefined> {
 
 /**
  * Log out: delete the 0600 bearer file so the config is no longer "configured"
- * (§13). Called when the server rejects the token (revoked/rotated) — the user is
+ * (the "server" section). Called when the server rejects the token (revoked/rotated) — the user is
  * routed back to `init` to re-authenticate. Idempotent.
  */
 export async function logout(env: NodeJS.ProcessEnv = process.env): Promise<void> {
