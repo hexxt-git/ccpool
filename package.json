@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bun": "bun run vitest run",
+    "demo": "pnpm --filter ccpool run demo",
     "link:cli": "pnpm build && pnpm --filter ccpool run link",
     "unlink:cli": "pnpm --filter ccpool run unlink",
     "prepare": "husky"

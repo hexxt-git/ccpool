@@ -9,7 +9,7 @@
 
 When a group shares one Claude subscription (Pro or Max), everyone collides on the same limits: someone burns the 5-hour window by noon, someone quietly eats the weekly cap, and nobody finds out until it's gone. ccpool gives the group a live, shared view of the account's usage broken down by person, so fair use becomes something you can see and negotiate instead of guess at.
 
-<img width="1344" height="616" alt="image" src="https://github.com/user-attachments/assets/cd2e7326-6849-446b-9e65-5a121c2bb6d4" />
+<img width="1072" height="549" alt="2026-07-11_23-20-31" src="https://github.com/user-attachments/assets/aa9f9e96-e577-4793-a79e-9da916bcc459" />
 
 Available as a terminal dashboard (`ccpool tui`), a one-shot snapshot (`ccpool status`), and a Claude Code statusline (`ccpool statusline`).
 
@@ -52,6 +52,9 @@ ccpool                  # onboarding, then the live view
 The first run walks you through onboarding: pick a name, a **group password** everyone in the group shares (it's what lets a machine join), and a **member password** that's yours alone (it stops anyone else from reporting usage under your name). ccpool detects which Claude account you're on and starts the daemon for you. From then on `ccpool` opens straight to the live view.
 
 The first person to run it creates the group; everyone after joins with the group password. Onboarding is also scriptable: every prompt has a flag (`ccpool init --name sam --yes`, with `CCPOOL_GROUP_PASSWORD` / `CCPOOL_MEMBER_PASSWORD` for CI).
+
+<img width="1498" height="855" alt="image" src="https://github.com/user-attachments/assets/e9a96c82-5313-43e3-be2f-3703da8e28e0" />
+> there are multiple views
 
 ---
 

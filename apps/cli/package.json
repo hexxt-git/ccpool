@@ -38,6 +38,7 @@
   },
   "scripts": {
     "dev": "tsx src/cli.tsx",
+    "demo": "tsx scripts/demo-tui.tsx",
     "build": "tsup",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
