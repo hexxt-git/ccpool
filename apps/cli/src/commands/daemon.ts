@@ -18,6 +18,22 @@ function pathsFor(cfgConfigDir: string) {
   return daemonPaths(ccpoolDir(), cfgConfigDir);
 }
 
+/**
+ * The CLI entry to spawn for the detached daemon.
+ *
+ * In dev this module is `src/commands/daemon.ts`, so the entry sits one dir up
+ * at `src/cli.tsx`. In the published build tsup bundles everything flat into a
+ * single `dist/cli.js` — this module *is* the entry — so we must spawn the
+ * running file itself, not `../cli.js` (which would point one level above dist,
+ * where nothing exists).
+ */
+function cliEntryPath(): string {
+  const isDev = import.meta.url.endsWith(".ts") || import.meta.url.endsWith(".tsx");
+  return isDev
+    ? fileURLToPath(new URL("../cli.tsx", import.meta.url))
+    : fileURLToPath(import.meta.url);
+}
+
 // quiet, config-taking cores (used by the TUI, which cannot print to stdout)
 
 /** Daemon file locations for a config. */
@@ -36,8 +52,7 @@ export function spawnDaemon(cfg: Config): { pid: number } | { already: number } 
   const paths = daemonPathsFor(cfg);
   const existing = readPid(paths.pidFile);
   if (existing !== null && isAlive(existing)) return { already: existing };
-  const isDev = import.meta.url.endsWith(".ts") || import.meta.url.endsWith(".tsx");
-  const cliEntry = fileURLToPath(new URL(isDev ? "../cli.tsx" : "../cli.js", import.meta.url));
+  const cliEntry = cliEntryPath();
   const args = [...process.execArgv, cliEntry, "daemon", "run"];
   const pid = spawnDetached(process.execPath, args, {
     logFile: paths.logFile,
@@ -147,8 +162,7 @@ export async function runDaemonStart(): Promise<void> {
     return;
   }
 
-  const isDev = import.meta.url.endsWith(".ts") || import.meta.url.endsWith(".tsx");
-  const cliEntry = fileURLToPath(new URL(isDev ? "../cli.tsx" : "../cli.js", import.meta.url));
+  const cliEntry = cliEntryPath();
   const args = [...process.execArgv, cliEntry, "daemon", "run"];
   const pid = spawnDetached(process.execPath, args, {
     logFile: paths.logFile,
