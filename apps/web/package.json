@@ -2,6 +2,9 @@
   "name": "@ccpool/web",
   "type": "module",
   "version": "0.0.1",
+  "description": "Astro marketing site for ccpool.",
+  "license": "MIT",
+  "private": true,
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

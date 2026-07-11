@@ -19,10 +19,14 @@ import {
 
 const program = new Command();
 
+// Injected at build time by tsup from package.json (see tsup.config.ts); the
+// `typeof` guard keeps `tsx` dev runs (where it isn't defined) working.
+declare const __CLI_VERSION__: string;
+
 program
   .name("ccpool")
   .description("a shared, live picture of one Claude account's usage and who's using it")
-  .version("0.0.1");
+  .version(typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.0-dev");
 
 // Bare `ccpool` opens the TUI: onboarding when unconfigured, the live view
 // otherwise (press `c` there to configure). The subcommands below remain as a

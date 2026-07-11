@@ -1,29 +1,61 @@
 {
-  "name": "@ccpool/cli",
+  "name": "ccpool",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "Fairly share one Claude Code subscription across a group — a live, shared view of the account's usage and who's driving it.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "usage",
+    "quota",
+    "rate-limit",
+    "tui",
+    "ink"
+  ],
+  "license": "MIT",
+  "author": "hexxt",
+  "homepage": "https://github.com/hexxt-git/ccpool#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hexxt-git/ccpool.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/hexxt-git/ccpool/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
-    "ccpool": "./dist/cli.js"
+    "ccpool": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "tsx src/cli.tsx",
-    "build": "tsc",
+    "build": "tsup",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
     "link": "npm link",
-    "unlink": "npm unlink -g @ccpool/cli"
+    "unlink": "npm unlink -g ccpool"
   },
   "dependencies": {
-    "@ccpool/core": "workspace:*",
-    "@ccpool/daemon": "workspace:*",
     "commander": "^13.1.0",
     "ink": "^5.1.0",
     "react": "^18.3.1"
   },
   "devDependencies": {
+    "@ccpool/core": "workspace:*",
+    "@ccpool/daemon": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.18",
     "ink-testing-library": "^4.0.0",
+    "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

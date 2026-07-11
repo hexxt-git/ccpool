@@ -2,6 +2,8 @@
   "name": "@ccpool/storage-libsql",
   "type": "module",
   "version": "0.0.1",
+  "description": "Server-side libSQL/Turso storage backend and registry for ccpool (the only database code).",
+  "license": "MIT",
   "private": true,
   "exports": {
     ".": {

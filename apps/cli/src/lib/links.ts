@@ -7,7 +7,7 @@ export const SITE_URL = "https://ccpool.hexxt.dev";
  * purpose — members only ever type the two passwords. `CCPOOL_SERVER_URL`
  * overrides it for development and self-hosted servers.
  */
-export const DEFAULT_SERVER_URL = "https://api.ccpool.hexxt.dev";
+export const DEFAULT_SERVER_URL = "https://ccpool.vps.hexxt.dev";
 
 /**
  * Wrap `text` as a clickable OSC 8 hyperlink to `url`. When `enabled` is false

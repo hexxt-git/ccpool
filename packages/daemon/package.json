@@ -2,6 +2,8 @@
   "name": "@ccpool/daemon",
   "type": "module",
   "version": "0.0.1",
+  "description": "ccpool's long-running observer: the poll loop, reset detection, and detached process lifecycle.",
+  "license": "MIT",
   "private": true,
   "exports": {
     ".": {

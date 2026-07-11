@@ -2,6 +2,9 @@
   "name": "@ccpool/app",
   "type": "module",
   "version": "0.0.1",
+  "description": "ccpool web dashboard (React + Vite).",
+  "license": "MIT",
+  "private": true,
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

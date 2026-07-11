@@ -2,6 +2,8 @@
   "name": "@ccpool/core",
   "type": "module",
   "version": "0.0.1",
+  "description": "Runtime-agnostic domain logic for ccpool: the storage boundary, ingest/view backend pieces, attribution, view assembly, and the wire contract.",
+  "license": "MIT",
   "private": true,
   "exports": {
     ".": {

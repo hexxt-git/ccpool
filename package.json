@@ -1,5 +1,7 @@
 {
-  "name": "ccpool",
+  "name": "ccpool-monorepo",
+  "description": "Monorepo for ccpool — fairly share one Claude Code subscription across a group.",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "build": "turbo build",
@@ -11,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bun": "bun run vitest run",
-    "link:cli": "pnpm build && pnpm --filter @ccpool/cli run link",
+    "link:cli": "pnpm build && pnpm --filter ccpool run link",
     "prepare": "husky"
   },
   "devDependencies": {

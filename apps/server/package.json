@@ -2,6 +2,8 @@
   "name": "@ccpool/server",
   "type": "module",
   "version": "0.0.1",
+  "description": "Multi-tenant HTTP server for ccpool (Hono + libSQL) — the one path to the shared ledger.",
+  "license": "MIT",
   "private": true,
   "exports": {
     ".": {
