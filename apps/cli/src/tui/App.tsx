@@ -36,6 +36,7 @@ export function App({
   viewSource,
   onConfigure,
   onLoggedOut,
+  pollIntervalMs = 2000,
 }: {
   cfg: Config;
   viewSource: ViewSource;
@@ -43,6 +44,8 @@ export function App({
   onConfigure?: () => void;
   /** The server rejected our bearer (revoked/rotated) — hand back to re-init (the "server" section). */
   onLoggedOut?: () => void;
+  /** How often to re-poll the view. Defaults to 2s; the demo drops it for a smoother animation. */
+  pollIntervalMs?: number;
 }): React.ReactElement {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
@@ -115,7 +118,7 @@ export function App({
 
   useEffect(() => {
     void refresh();
-    const poll = setInterval(() => void refresh(), 2000);
+    const poll = setInterval(() => void refresh(), pollIntervalMs);
     const clock = setInterval(() => setTick((t) => t + 1), 1000);
     const promo = setInterval(() => setMsg((m) => (m + 1) % MESSAGES.length), 10000);
     return () => {
@@ -123,7 +126,7 @@ export function App({
       clearInterval(clock);
       clearInterval(promo);
     };
-  }, [refresh]);
+  }, [refresh, pollIntervalMs]);
 
   const innerCols = cols - 2;
   const n = DESIGNS.length;
