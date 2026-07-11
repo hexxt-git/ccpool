@@ -21,7 +21,7 @@ const SALT_LEN = 16;
 /** Comfortably above 128*N*r for the current params AND any raised-later ones. */
 const MAX_MEM = 128 * 1024 * 1024;
 
-export { MIN_PASSWORD_LENGTH } from "@ccshare/core";
+export { MIN_PASSWORD_LENGTH } from "@ccpool/core";
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_LEN);

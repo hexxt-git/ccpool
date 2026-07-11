@@ -1,4 +1,4 @@
-import { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { LibsqlDatabase } from "@ccpool/storage-libsql";
 import type { Storage } from "../src/index.js";
 
 // Core's own tests run against the real (only) adapter over a libSQL `:memory:`

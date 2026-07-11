@@ -9,12 +9,12 @@ export interface DaemonPaths {
   logFile: string;
 }
 
-export function daemonPaths(ccshareDir: string, configDir: string): DaemonPaths {
+export function daemonPaths(ccpoolDir: string, configDir: string): DaemonPaths {
   const h = createHash("sha256").update(configDir).digest("hex").slice(0, 8);
   return {
-    pidFile: join(ccshareDir, `daemon-${h}.pid`),
-    stateFile: join(ccshareDir, `state-${h}.json`),
-    logFile: join(ccshareDir, "logs", `daemon-${h}.log`),
+    pidFile: join(ccpoolDir, `daemon-${h}.pid`),
+    stateFile: join(ccpoolDir, `state-${h}.json`),
+    logFile: join(ccpoolDir, "logs", `daemon-${h}.log`),
   };
 }
 

@@ -1,7 +1,7 @@
 import type { MessageUsage, ResetEvent, SharedView, UsageMarker, UsageSample } from "../types.js";
 
 /**
- * The wire contract between the CLI and the ccshare server. Both ends import
+ * The wire contract between the CLI and the ccpool server. Both ends import
  * these shapes from core, so they can't drift. All
  * bodies are JSON; auth'd endpoints take `Authorization: Bearer <token>`.
  */

@@ -4,7 +4,7 @@ import { loadConfig } from "../lib/config.js";
 import { Root } from "../tui/Root.js";
 
 /**
- * The default entry (bare `ccshare`): open the TUI. Loads config to decide the
+ * The default entry (bare `ccpool`): open the TUI. Loads config to decide the
  * first screen — onboarding when unconfigured, the live view otherwise — and
  * lets Root own storage for the session.
  */

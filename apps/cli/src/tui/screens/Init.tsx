@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useStdin } from "ink";
-import { isValidName, type Config } from "@ccshare/core";
+import { isValidName, type Config } from "@ccpool/core";
 import { applySharedJoin, probeSharedGroup, type SharedProbe } from "../../lib/setup.js";
 import { clearAuthRejected, spawnDaemon, stopDaemonProcess } from "../../commands/daemon.js";
 import { Clawd } from "../designs/parts.js";
@@ -309,7 +309,7 @@ export function InitScreen({
         <Box flexDirection="column" marginBottom={1}>
           <Box justifyContent="space-between">
             <Text color={P.orange} bold>
-              {initialConfig ? "ccshare re-initialization" : "ccshare setup"}
+              {initialConfig ? "ccpool re-initialization" : "ccpool setup"}
             </Text>
             <Text color={P.faint}>
               {stepNo}/{visible.length}

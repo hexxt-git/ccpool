@@ -1,4 +1,4 @@
-import { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { LibsqlDatabase } from "@ccpool/storage-libsql";
 import type { ServerDeps } from "../src/deps.js";
 import { TenantCache } from "../src/tenants.js";
 

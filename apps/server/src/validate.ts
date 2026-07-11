@@ -11,7 +11,7 @@ import {
   type ResetEvent,
   type UsageMarker,
   type UsageSample,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { MIN_PASSWORD_LENGTH } from "./auth.js";
 
 /**

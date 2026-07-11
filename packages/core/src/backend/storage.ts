@@ -143,8 +143,8 @@ export class StorageIngestSink implements IngestSink {
    */
   async bootstrap(): Promise<IngestBootstrap> {
     const info = await this.storage.inspect();
-    if (info.kind !== "ccshare") {
-      throw new Error(`not a ccshare database (${info.kind}) — run \`ccshare init\``);
+    if (info.kind !== "ccpool") {
+      throw new Error(`not a ccpool database (${info.kind}) — run \`ccpool init\``);
     }
     if (info.schemaVersion < SCHEMA_VERSION) {
       await this.storage.migrate(SCHEMA_VERSION);

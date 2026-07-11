@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
-import type { AuthResponse, SharedView } from "@ccshare/core";
+import type { AuthResponse, SharedView } from "@ccpool/core";
 import { makeApp, type ServerDeps } from "../src/app.js";
 import { makeTestDeps } from "./helpers.js";
 

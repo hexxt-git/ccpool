@@ -1,4 +1,4 @@
-// @ccshare/daemon — the long-running observer process (no IPC).
+// @ccpool/daemon — the long-running observer process (no IPC).
 
 export { Daemon, startDaemon } from "./daemon.js";
 export type { DaemonDeps } from "./daemon.js";

@@ -1,4 +1,4 @@
-import type { CapKind } from "@ccshare/core";
+import type { CapKind } from "@ccpool/core";
 import { requireInit } from "../lib/guard.js";
 import { renderHistoryLines } from "../lib/history-render.js";
 

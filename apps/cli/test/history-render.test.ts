@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { HistoryPage } from "@ccshare/core";
+import type { HistoryPage } from "@ccpool/core";
 import { renderHistoryLines } from "../src/lib/history-render.js";
 
 const page: HistoryPage = {

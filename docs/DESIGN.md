@@ -1,6 +1,6 @@
-# CCSHARE - Retro Website Design & Animation Specification
+# CCPOOL - Retro Website Design & Animation Specification
 
-The design specifications and custom animation language for the "CCSHARE" marketing website.
+The design specifications and custom animation language for the "CCPOOL" marketing website.
 
 ## 1. Overall Theme & Aesthetics
 
@@ -14,7 +14,7 @@ The design specifications and custom animation language for the "CCSHARE" market
 - **Secondary Text (Footer, Subdued text):** Gray (`#888888`)
 - **Accents:**
   - **Orange:** (`#FF6B00`) - Used for primary buttons, highlighted headings ("FAIR SHARING", Feature 1).
-  - **Green:** (`#4ade80`) - Used for the logo text ("CCSHARE"), Feature 3.
+  - **Green:** (`#4ade80`) - Used for the logo text ("CCPOOL"), Feature 3.
   - **Yellow:** Feature 2.
   - **Animation Palette:** A vibrant 4-color palette (`#FF6B00`, `#4ade80`, `#3b82f6`, `#a855f7`) used dynamically in reveal animations.
 
@@ -63,7 +63,7 @@ A heavily choreographed, multi-stage loading sequence in the hero visualization:
 
 ### 5.1. Header (Navbar)
 
-- **Left:** Pixel-art sprite logo with "CCSHARE" text.
+- **Left:** Pixel-art sprite logo with "CCPOOL" text.
 - **Right (Desktop):** Navigation links (Docs, GitHub, LinkedIn) with crisp SVG pixel-art icons.
 - **Right (Mobile):** A chunky SVG hamburger menu button that toggles a sliding, absolute-positioned dropdown (`max-h-0` to `max-h-[300px]`) containing the navigation links.
 - **Behavior:** `sticky top-0 z-50` to persist seamlessly during scrolling.

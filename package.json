@@ -1,5 +1,5 @@
 {
-  "name": "ccshare",
+  "name": "ccpool",
   "private": true,
   "scripts": {
     "build": "turbo build",
@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bun": "bun run vitest run",
-    "link:cli": "pnpm build && pnpm --filter @ccshare/cli run link",
+    "link:cli": "pnpm build && pnpm --filter @ccpool/cli run link",
     "prepare": "husky"
   },
   "devDependencies": {

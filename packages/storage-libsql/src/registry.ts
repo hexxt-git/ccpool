@@ -6,7 +6,7 @@ import {
   type CreateGroupInput,
   type GroupRow,
   type MemberRow,
-} from "@ccshare/core";
+} from "@ccpool/core";
 
 /**
  * libSQL surfaces every uniqueness/FK failure as a SQLITE_CONSTRAINT* code; a
@@ -21,7 +21,7 @@ function isConstraintViolation(err: unknown): boolean {
  * The libSQL registry, over the ONE client its `LibsqlDatabase` owns. The
  * composed signup ops are single `batch(..., "write")` statement lists (every
  * value is known up front, so no interactive transaction is needed) that
- * deliberately cross into the ledger tables (this group's `ccshare_meta` /
+ * deliberately cross into the ledger tables (this group's `ccpool_meta` /
  * `users` roster / `writeSeq`): identity and provisioning commit or roll back
  * together.
  */
@@ -116,8 +116,8 @@ export class LibsqlRegistry {
       // Provision the group's ledger in the same transaction. writeSeq starts
       // at 1: the roster insert below is this ledger's first observable write.
       {
-        sql: `INSERT INTO ccshare_meta (group_id, app, schemaVersion, projectId, createdAt, accountId, writeSeq)
-              VALUES (?, 'ccshare', ?, ?, ?, ?, 1)`,
+        sql: `INSERT INTO ccpool_meta (group_id, app, schemaVersion, projectId, createdAt, accountId, writeSeq)
+              VALUES (?, 'ccpool', ?, ?, ?, ?, 1)`,
         args: [group.id, SCHEMA_VERSION, randomUUID(), now, input.accountId],
       },
       {
@@ -170,7 +170,7 @@ export class LibsqlRegistry {
         args: [groupId, name, now],
       },
       {
-        sql: `UPDATE ccshare_meta SET writeSeq = writeSeq + 1 WHERE group_id = ?`,
+        sql: `UPDATE ccpool_meta SET writeSeq = writeSeq + 1 WHERE group_id = ?`,
         args: [groupId],
       },
       {

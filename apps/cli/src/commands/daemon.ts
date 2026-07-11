@@ -8,14 +8,14 @@ import {
   spawnDetached,
   startDaemon,
   type DaemonPaths,
-} from "@ccshare/daemon";
-import type { Config, LocalState } from "@ccshare/core";
-import { ccshareDir } from "../lib/config.js";
+} from "@ccpool/daemon";
+import type { Config, LocalState } from "@ccpool/core";
+import { ccpoolDir } from "../lib/config.js";
 import { makeIngestSink } from "../lib/backend.js";
 import { loadConfig } from "../lib/config.js";
 
 function pathsFor(cfgConfigDir: string) {
-  return daemonPaths(ccshareDir(), cfgConfigDir);
+  return daemonPaths(ccpoolDir(), cfgConfigDir);
 }
 
 // quiet, config-taking cores (used by the TUI, which cannot print to stdout)
@@ -99,7 +99,7 @@ export function tailDaemonLog(cfg: Config, n = 8): string[] {
 export async function runDaemonForeground(): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized. Run `ccshare init` first.");
+    console.error("Not initialized. Run `ccpool init` first.");
     process.exitCode = 1;
     return;
   }
@@ -134,7 +134,7 @@ export async function runDaemonForeground(): Promise<void> {
 export async function runDaemonStart(): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized. Run `ccshare init` first.");
+    console.error("Not initialized. Run `ccpool init` first.");
     process.exitCode = 1;
     return;
   }
@@ -159,7 +159,7 @@ export async function runDaemonStart(): Promise<void> {
 export async function runDaemonStop(): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized. Run `ccshare init` first.");
+    console.error("Not initialized. Run `ccpool init` first.");
     process.exitCode = 1;
     return;
   }
@@ -182,7 +182,7 @@ export async function runDaemonStop(): Promise<void> {
 export async function runDaemonStatus(): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized. Run `ccshare init` first.");
+    console.error("Not initialized. Run `ccpool init` first.");
     process.exitCode = 1;
     return;
   }
@@ -193,7 +193,7 @@ export async function runDaemonStatus(): Promise<void> {
   if (pid !== null && isAlive(pid)) {
     console.log(`Daemon running (pid ${pid}).`);
   } else {
-    console.log("Daemon not running. Start it with `ccshare daemon start`.");
+    console.log("Daemon not running. Start it with `ccpool daemon start`.");
   }
 
   if (existsSync(stateFile)) {
@@ -210,7 +210,7 @@ export async function runDaemonStatus(): Promise<void> {
         console.log("Last full sync: never (no clean poll + ingest yet).");
       }
       if (state.account.authRejected) {
-        console.log("Auth rejected by the server — run `ccshare init` to re-authenticate.");
+        console.log("Auth rejected by the server — run `ccpool init` to re-authenticate.");
       }
       if (state.account.tokenExpired) {
         console.log("Token expired — waiting for Claude Code to refresh auth.");

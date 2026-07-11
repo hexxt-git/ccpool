@@ -9,9 +9,9 @@ import {
   type LocalState,
   type SharedView,
   type ViewSource,
-} from "@ccshare/core";
-import { daemonPaths } from "@ccshare/daemon";
-import { ccshareDir } from "../src/lib/config.js";
+} from "@ccpool/core";
+import { daemonPaths } from "@ccpool/daemon";
+import { ccpoolDir } from "../src/lib/config.js";
 import { gatherView } from "../src/lib/view.js";
 
 /** A ViewSource whose fetch always rejects with the given error. */
@@ -31,7 +31,7 @@ const emptySource: ViewSource = {
 
 /** Write a state.json for the config's observed dir so the reader picks it up. */
 function writeState(partial: Partial<LocalState>): void {
-  const { stateFile } = daemonPaths(ccshareDir(), cfg.configDirs[0]!);
+  const { stateFile } = daemonPaths(ccpoolDir(), cfg.configDirs[0]!);
   const state: LocalState = {
     updatedAt: "2026-06-29T20:05:00.000Z",
     lastSyncAt: null,
@@ -48,8 +48,8 @@ let dir: string;
 let cfg: Config;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "ccshare-view-"));
-  process.env.CCSHARE_DIR = join(dir, ".ccshare");
+  dir = mkdtempSync(join(tmpdir(), "ccpool-view-"));
+  process.env.CCPOOL_DIR = join(dir, ".ccpool");
   cfg = {
     server: { url: "https://api.example.test", token: "tok" },
     name: "sam",
@@ -60,7 +60,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.CCSHARE_DIR;
+  delete process.env.CCPOOL_DIR;
 });
 
 describe("gatherView error classification", () => {

@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
-import { CcshareClient, HttpIngestSink, HttpViewSource } from "@ccshare/core";
-import { Daemon } from "@ccshare/daemon";
+import { CcpoolClient, HttpIngestSink, HttpViewSource } from "@ccpool/core";
+import { Daemon } from "@ccpool/daemon";
 import { makeApp } from "../src/app.js";
 import type { ServerDeps } from "../src/deps.js";
 import { makeTestDeps } from "./helpers.js";
@@ -46,7 +46,7 @@ afterAll(async () => {
 });
 
 function fixtureConfigDir(): string {
-  const root = mkdtempSync(join(tmpdir(), "ccshare-e2e-"));
+  const root = mkdtempSync(join(tmpdir(), "ccpool-e2e-"));
   const configDir = join(root, "config");
   mkdirSync(configDir, { recursive: true });
   writeFileSync(
@@ -84,7 +84,7 @@ function writeTranscript(configDir: string): void {
 
 describe("client to server end to end", () => {
   it("daemon tick → POST /v1/ingest → GET /v1/view shows the member's usage", async () => {
-    const auth = await new CcshareClient(baseUrl).createGroup({
+    const auth = await new CcpoolClient(baseUrl).createGroup({
       accountId: ACCOUNT,
       groupPassword: "group-pw-1",
       memberName: "sam",
@@ -128,7 +128,7 @@ describe("client to server end to end", () => {
   });
 
   it("a daemon under the WRONG account gets 409s and never lands in the ledger", async () => {
-    const login = await new CcshareClient(baseUrl).login({
+    const login = await new CcpoolClient(baseUrl).login({
       accountId: ACCOUNT,
       memberName: "sam",
       memberPassword: "sam-pw-11",

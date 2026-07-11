@@ -21,7 +21,7 @@ export default function App() {
       <main className="w-full max-w-xl border border-black p-6">
         <header>
           <h1 className="mb-4 text-xs uppercase tracking-widest text-neutral-400">
-            ▸ ccshare / usage dashboard
+            ▸ ccpool / usage dashboard
           </h1>
           <div className="mb-6 border-t border-black" aria-hidden="true" />
         </header>

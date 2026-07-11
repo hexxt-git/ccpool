@@ -17,28 +17,28 @@ describe("normalizeUrl", () => {
 
   // ── tilde expansion ─────────────────────────────────────────────────────────
   it("expands ~ in a bare path", () => {
-    expect(normalizeUrl("~/.ccshare/ccshare.db")).toBe(`file:${HOME}/.ccshare/ccshare.db`);
+    expect(normalizeUrl("~/.ccpool/ccpool.db")).toBe(`file:${HOME}/.ccpool/ccpool.db`);
   });
 
   it("expands ~ in a file: URL", () => {
-    expect(normalizeUrl("file:~/.ccshare/ccshare.db")).toBe(`file:${HOME}/.ccshare/ccshare.db`);
+    expect(normalizeUrl("file:~/.ccpool/ccpool.db")).toBe(`file:${HOME}/.ccpool/ccpool.db`);
   });
 
   it("strips double slash then expands ~ (file://~/...)", () => {
-    expect(normalizeUrl("file://~/.ccshare/ccshare.db")).toBe(`file:${HOME}/.ccshare/ccshare.db`);
+    expect(normalizeUrl("file://~/.ccpool/ccpool.db")).toBe(`file:${HOME}/.ccpool/ccpool.db`);
   });
 
   it("expands bare ~ with trailing slash", () => {
-    expect(normalizeUrl("~/ccshare.db")).toBe(`file:${HOME}/ccshare.db`);
+    expect(normalizeUrl("~/ccpool.db")).toBe(`file:${HOME}/ccpool.db`);
   });
 
   // ── absolute paths get file: prefix ─────────────────────────────────────────
   it("prepends file: to a bare absolute path", () => {
-    expect(normalizeUrl("/var/db/ccshare.db")).toBe("file:/var/db/ccshare.db");
+    expect(normalizeUrl("/var/db/ccpool.db")).toBe("file:/var/db/ccpool.db");
   });
 
   it("leaves an already-correct file: absolute path alone", () => {
-    expect(normalizeUrl("file:/var/db/ccshare.db")).toBe("file:/var/db/ccshare.db");
+    expect(normalizeUrl("file:/var/db/ccpool.db")).toBe("file:/var/db/ccpool.db");
   });
 
   // ── relative paths get file: prefix (validation rejects them separately) ────

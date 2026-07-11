@@ -4,7 +4,7 @@
  * Tables are shared across groups; a `group_id` column scopes every row.
  */
 export const LEDGER_DDL: string[] = [
-  `CREATE TABLE IF NOT EXISTS ccshare_meta (
+  `CREATE TABLE IF NOT EXISTS ccpool_meta (
      group_id TEXT PRIMARY KEY,
      app TEXT NOT NULL,
      schemaVersion INTEGER NOT NULL,

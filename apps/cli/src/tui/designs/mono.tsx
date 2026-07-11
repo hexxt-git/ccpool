@@ -30,7 +30,7 @@ export function mono(
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="column" marginBottom={1}>
         <Text color={M.hi} bold>
-          ccshare
+          ccpool
         </Text>
         <Text color={M.lo}>
           account <Text color={M.hi}>{model.account}</Text>

@@ -1,5 +1,5 @@
 {
-  "name": "@ccshare/daemon",
+  "name": "@ccpool/daemon",
   "type": "module",
   "version": "0.0.1",
   "private": true,
@@ -17,7 +17,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@ccshare/core": "workspace:*"
+    "@ccpool/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

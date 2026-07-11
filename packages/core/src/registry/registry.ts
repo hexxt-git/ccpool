@@ -3,7 +3,7 @@
  * the server-owned identity tables that live in the same physical database as the
  * per-group ledgers (the ledger tables carry a `group_id` referencing
  * `groups(id)`). Core owns these row/input/error shapes; the concrete registry
- * (the SQL) lives in `@ccshare/storage-libsql` on `LibsqlDatabase`.
+ * (the SQL) lives in `@ccpool/storage-libsql` on `LibsqlDatabase`.
  *
  * The registry stores opaque hash strings only — password (scrypt) and token
  * (sha256) hashing live in the server; nothing here ever sees a secret.
@@ -50,11 +50,11 @@ export interface CreateGroupInput {
   tokenHash: string;
 }
 
-// The concrete registry (`LibsqlRegistry` in `@ccshare/storage-libsql`) exposes:
+// The concrete registry (`LibsqlRegistry` in `@ccpool/storage-libsql`) exposes:
 //   getGroupByAccount, getMember, resolveToken, insertToken, touchToken, and the
 //   two composed atomic-signup ops createGroupWithMember / addMemberWithToken.
 // Each composed op is one `batch(..., "write")` — every value is known up front —
-// and deliberately crosses into the ledger tables (the group's `ccshare_meta`
+// and deliberately crosses into the ledger tables (the group's `ccpool_meta`
 // row, the `users` roster row, the `writeSeq` bump): provisioning atomically with
 // identity is the point. A lost UNIQUE race throws {@link RegistryConflictError}
 // and writes nothing.

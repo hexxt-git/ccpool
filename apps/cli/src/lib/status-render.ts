@@ -1,4 +1,4 @@
-import { pctLabel } from "@ccshare/core";
+import { pctLabel } from "@ccpool/core";
 import type { DesignCap, DesignMember, DesignModel } from "./design-model.js";
 import { GITHUB_URL, SITE_URL, link } from "./links.js";
 import { heat } from "./heat.js";
@@ -56,7 +56,7 @@ const personColor = (m: DesignMember, i: number) =>
 function header(m: DesignModel, width: number, paint: Paint): string[] {
   const CLAWD = [" ▐▛███▜▌", "▝▜█████▛▘", "  ▘▘ ▝▝"];
   const lines = [
-    paint("ccshare", HEX.orange, true) +
+    paint("ccpool", HEX.orange, true) +
       paint(" · status", HEX.dim) +
       paint("  ·  you are ", HEX.dim) +
       paint(m.me, HEX.cream, true),
@@ -157,7 +157,7 @@ export function renderStatusLines(
     // rate-limited), saying "start the daemon" is wrong and misleading.
     const empty = model.daemonRunning
       ? "no reading yet — waiting for the first usage poll…"
-      : "no data yet — start the daemon with `ccshare daemon start`";
+      : "no data yet — start the daemon with `ccpool daemon start`";
     lines.push("", paint(empty, HEX.dim));
   } else {
     lines.push("", ...overall(model, width, paint), "", ...members(model, width, paint));
@@ -167,8 +167,8 @@ export function renderStatusLines(
     for (const n of model.notes) lines.push(paint(`  · ${n}`, HEX.dim));
   }
   const color = opts.color ?? false;
-  const gh = paint(link("github.com/hexxt-git/ccshare", GITHUB_URL, color), HEX.blue);
-  const site = paint(link("ccshare.hexxt.dev", SITE_URL, color), HEX.blue);
+  const gh = paint(link("github.com/hexxt-git/ccpool", GITHUB_URL, color), HEX.blue);
+  const site = paint(link("ccpool.hexxt.dev", SITE_URL, color), HEX.blue);
   lines.push("", `  ${gh}${paint("  ·  ", HEX.faint)}${site}`);
   return lines;
 }

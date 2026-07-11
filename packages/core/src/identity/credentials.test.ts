@@ -16,7 +16,7 @@ describe("isTokenExpired", () => {
 describe("readCredentials (plaintext file)", () => {
   let dir: string;
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), "ccshare-creds-"));
+    dir = await mkdtemp(join(tmpdir(), "ccpool-creds-"));
   });
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -76,7 +76,7 @@ describe("readCredentials (plaintext file)", () => {
 describe("readCredentials (freshest source wins)", () => {
   let dir: string;
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), "ccshare-creds-fresh-"));
+    dir = await mkdtemp(join(tmpdir(), "ccpool-creds-fresh-"));
   });
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });

@@ -78,10 +78,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@ccshare/core':
+      '@ccpool/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@ccshare/daemon':
+      '@ccpool/daemon':
         specifier: workspace:*
         version: link:../../packages/daemon
       commander:
@@ -112,10 +112,10 @@ importers:
 
   apps/server:
     dependencies:
-      '@ccshare/core':
+      '@ccpool/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@ccshare/storage-libsql':
+      '@ccpool/storage-libsql':
         specifier: workspace:*
         version: link:../../packages/storage-libsql
       '@hono/node-server':
@@ -125,7 +125,7 @@ importers:
         specifier: ^4.6.14
         version: 4.12.27
     devDependencies:
-      '@ccshare/daemon':
+      '@ccpool/daemon':
         specifier: workspace:*
         version: link:../../packages/daemon
       '@types/node':
@@ -189,7 +189,7 @@ importers:
 
   packages/daemon:
     dependencies:
-      '@ccshare/core':
+      '@ccpool/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -202,7 +202,7 @@ importers:
 
   packages/storage-libsql:
     dependencies:
-      '@ccshare/core':
+      '@ccpool/core':
         specifier: workspace:*
         version: link:../core
       '@libsql/client':

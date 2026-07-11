@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { CapKind, HistoryWindowView } from "@ccshare/core";
+import type { CapKind, HistoryWindowView } from "@ccpool/core";
 import { Bar, Cell, Rule, lpad, pct, scrollLabel } from "./designs/parts.js";
 import { P } from "./designs/palette.js";
 import { CAP_LABEL } from "../lib/history-render.js";

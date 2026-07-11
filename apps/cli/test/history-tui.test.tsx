@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
-import type { HistoryWindowView } from "@ccshare/core";
+import type { HistoryWindowView } from "@ccpool/core";
 import { renderHistory, rankMembers, type HistoryState } from "../src/tui/history.js";
 
 const windows: HistoryWindowView[] = [

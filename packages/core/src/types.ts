@@ -116,7 +116,7 @@ export interface HistoryWindow {
 /**
  * One member's final share of a completed window (ADR-0002/0005). Rows for a given
  * `(cap, windowStart)` sum to that window's `overall`; `unknown` is a normal row.
- * These back `ccshare history` and the TUI history matrix.
+ * These back `ccpool history` and the TUI history matrix.
  */
 export interface HistoryShare {
   cap: CapKind;
@@ -179,19 +179,19 @@ export interface SharedView {
   samples: UsageSample[]; // latest per cap
   shares: UserShare[]; // per-person split of each cap window
   members: MemberSummary[]; // per-name measured activity (tokens, last seen)
-  users: User[]; // the roster, so `ccshare users` works
+  users: User[]; // the roster, so `ccpool users` works
 }
 
 /**
  * Result of inspecting one group's slice of the shared database. Only the server
  * ever opens a database, and always its own; the group is set up when its
- * `ccshare_meta` row exists ("ccshare"), otherwise it's "empty" and can be
+ * `ccpool_meta` row exists ("ccpool"), otherwise it's "empty" and can be
  * initialized.
  */
 export type DbInspection =
   | { kind: "empty" } // this group has no ledger yet -> initialize it
   | {
-      kind: "ccshare"; // this group's ledger exists -> use it (maybe migrate)
+      kind: "ccpool"; // this group's ledger exists -> use it (maybe migrate)
       schemaVersion: number;
       /**
        * The Claude account this group's ledger is bound to
@@ -203,7 +203,7 @@ export type DbInspection =
     };
 
 export interface Config {
-  /** The ccshare server. The bearer token lives in the 0600 token file, never here. */
+  /** The ccpool server. The bearer token lives in the 0600 token file, never here. */
   server: { url: string; token?: string };
   /** Active user; alphanumeric + hyphens. Changeable with `config set name`. */
   name: string;

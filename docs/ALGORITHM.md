@@ -1,8 +1,8 @@
-# ccshare — how it works, end to end
+# ccpool — how it works, end to end
 
-This document explains every algorithm in ccshare, in the order data flows through the system, with code excerpts from the actual implementation.
+This document explains every algorithm in ccpool, in the order data flows through the system, with code excerpts from the actual implementation.
 
-ccshare answers one question for a group sharing **one Claude subscription**: _the account is at 60% of its 5-hour limit — who caused that?_ Anthropic only reports a single account-wide number, so the per-person split has to be reconstructed locally and shared.
+ccpool answers one question for a group sharing **one Claude subscription**: _the account is at 60% of its 5-hour limit — who caused that?_ Anthropic only reports a single account-wide number, so the per-person split has to be reconstructed locally and shared.
 
 The whole system is a **read-only observer plus a shared ledger**. It never sits in the request path. Two facts drive the entire design:
 
@@ -26,7 +26,7 @@ The whole system is a **read-only observer plus a shared ledger**. It never sits
                       │     state.json (atomic)      IngestSink.ingest(ONE batch/tick)      │
                       └────────────┼─────────────────────────┼─────────────────────────────┘
                                    │                          │  HTTP
-                                   │                 ccshare server (§13)
+                                   │                 ccpool server (§13)
                                    │            libSQL — one shared DB,
                                    │            every row scoped by group_id
                                    │                          │
@@ -35,7 +35,7 @@ The whole system is a **read-only observer plus a shared ledger**. It never sits
                                          cached by change token; recomputed only on change)
 ```
 
-No process talks to another process. The contract is **files plus the server**: the daemon writes `state.json` and sends each tick as one `IngestSink` batch over HTTP; readers pull the precomputed `SharedView` through a `ViewSource`. The client never opens a database — the multi-tenant ccshare server owns the only one (§13).
+No process talks to another process. The contract is **files plus the server**: the daemon writes `state.json` and sends each tick as one `IngestSink` batch over HTTP; readers pull the precomputed `SharedView` through a `ViewSource`. The client never opens a database — the multi-tenant ccpool server owns the only one (§13).
 
 ---
 

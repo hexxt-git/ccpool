@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "ink";
-import type { Config } from "@ccshare/core";
+import type { Config } from "@ccpool/core";
 import { makeViewSource } from "../lib/backend.js";
 import { logout } from "../lib/config.js";
 import { isDaemonRunning, spawnDaemon, stopDaemonProcess } from "../commands/daemon.js";

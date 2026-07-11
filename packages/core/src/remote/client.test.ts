@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AccountConflictError } from "../backend/sink.js";
-import { ApiRequestError, CcshareClient, HttpIngestSink, HttpViewSource } from "./client.js";
+import { ApiRequestError, CcpoolClient, HttpIngestSink, HttpViewSource } from "./client.js";
 import type { SharedView } from "../types.js";
 
 const BASE = "http://localhost:9999";
@@ -13,10 +13,10 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response): type
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
   new Response(JSON.stringify(body), { status, headers });
 
-describe("CcshareClient", () => {
+describe("CcpoolClient", () => {
   it("posts the request and returns the AuthResponse", async () => {
     let seen: { url: string; body: unknown } | null = null;
-    const client = new CcshareClient(BASE, {
+    const client = new CcpoolClient(BASE, {
       fetchImpl: stubFetch((url, init) => {
         seen = { url, body: JSON.parse(String(init?.body)) };
         return json({ token: "ccs_t", groupId: "g1", memberName: "sam" });
@@ -35,7 +35,7 @@ describe("CcshareClient", () => {
 
   it("looks up group existence with the accountId in the query", async () => {
     let seenUrl = "";
-    const client = new CcshareClient(BASE, {
+    const client = new CcpoolClient(BASE, {
       fetchImpl: stubFetch((url) => {
         seenUrl = url;
         return json({ exists: true });
@@ -47,7 +47,7 @@ describe("CcshareClient", () => {
   });
 
   it("maps ApiError bodies onto ApiRequestError with the code", async () => {
-    const client = new CcshareClient(BASE, {
+    const client = new CcpoolClient(BASE, {
       fetchImpl: stubFetch(() => json({ error: "no group", code: "not-found" }, 404)),
     });
     const err = await client

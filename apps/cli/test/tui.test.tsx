@@ -4,31 +4,31 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { render } from "ink-testing-library";
-import { emptyBatch, StorageViewSource, type Config } from "@ccshare/core";
-import { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { emptyBatch, StorageViewSource, type Config } from "@ccpool/core";
+import { LibsqlDatabase } from "@ccpool/storage-libsql";
 import { App } from "../src/tui/App.js";
 import { Root } from "../src/tui/Root.js";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-let ccshareDir: string;
+let ccpoolDir: string;
 let cfg: Config;
 let db: LibsqlDatabase | undefined;
 
 beforeEach(() => {
-  ccshareDir = mkdtempSync(join(tmpdir(), "ccshare-tui-"));
-  process.env.CCSHARE_DIR = ccshareDir;
+  ccpoolDir = mkdtempSync(join(tmpdir(), "ccpool-tui-"));
+  process.env.CCPOOL_DIR = ccpoolDir;
   cfg = {
     server: { url: "https://api.example.test", token: "tok" },
     name: "sam",
     pollIntervalMs: 60_000,
-    configDirs: [join(ccshareDir, "config")],
+    configDirs: [join(ccpoolDir, "config")],
     logLevel: "info",
   };
 });
 
 afterEach(async () => {
-  delete process.env.CCSHARE_DIR;
+  delete process.env.CCPOOL_DIR;
   await db?.close();
   db = undefined;
 });
@@ -74,7 +74,7 @@ describe("Root", () => {
       server: { url: "https://api.example.test" }, // no token
       name: "sam",
       pollIntervalMs: 60_000,
-      configDirs: [join(ccshareDir, "config")],
+      configDirs: [join(ccpoolDir, "config")],
       logLevel: "info",
     } as Config;
     const { lastFrame, unmount } = render(<Root initialConfig={incomplete} />);

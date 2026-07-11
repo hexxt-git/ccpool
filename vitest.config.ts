@@ -8,9 +8,9 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      "@ccshare/core": r("./packages/core/src/index.ts"),
-      "@ccshare/storage-libsql": r("./packages/storage-libsql/src/index.ts"),
-      "@ccshare/daemon": r("./packages/daemon/src/index.ts"),
+      "@ccpool/core": r("./packages/core/src/index.ts"),
+      "@ccpool/storage-libsql": r("./packages/storage-libsql/src/index.ts"),
+      "@ccpool/daemon": r("./packages/daemon/src/index.ts"),
     },
   },
   test: {

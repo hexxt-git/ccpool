@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { globalConfigPath } from "./paths.js";
 
 /**
- * The Claude *account* behind a config dir — never the ccshare person. Used to
+ * The Claude *account* behind a config dir — never the ccpool person. Used to
  * scope the tank and confirm everyone's pointed at the same login.
  */
 export interface AccountIdentity {

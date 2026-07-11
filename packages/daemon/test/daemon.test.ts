@@ -11,8 +11,8 @@ import {
   type LocalState,
   type Storage,
   type TickBatch,
-} from "@ccshare/core";
-import { LibsqlDatabase } from "@ccshare/storage-libsql";
+} from "@ccpool/core";
+import { LibsqlDatabase } from "@ccpool/storage-libsql";
 import { Daemon, type DaemonDeps } from "../src/daemon.js";
 import { acquireLock, AlreadyRunningError, daemonPaths, reassertLock } from "../src/lifecycle.js";
 import { existsSync, unlinkSync } from "node:fs";
@@ -37,9 +37,9 @@ interface Harness {
 }
 
 async function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Promise<Harness> {
-  const root = mkdtempSync(join(tmpdir(), "ccshare-daemon-"));
+  const root = mkdtempSync(join(tmpdir(), "ccpool-daemon-"));
   const configDir = join(root, "config");
-  const ccshareDir = join(root, "ccshare");
+  const ccpoolDir = join(root, "ccpool");
   mkdirSync(configDir, { recursive: true });
 
   writeFileSync(
@@ -66,7 +66,7 @@ async function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Promise
   openDbs.push(db);
   const storage = db.forGroup("g");
   const sink = new StorageIngestSink(storage, { now });
-  const paths = daemonPaths(ccshareDir, configDir);
+  const paths = daemonPaths(ccpoolDir, configDir);
 
   return {
     storage,
@@ -394,14 +394,14 @@ describe("single-instance lock", () => {
   const DEAD_PID = 0x7ffffffe;
 
   it("refuses a second holder while the first is alive", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-lock-"));
     const { pidFile } = daemonPaths(root, "/some/config");
     acquireLock(pidFile); // writes our own (live) pid
     expect(() => acquireLock(pidFile)).toThrow(AlreadyRunningError);
   });
 
   it("reclaims a stale lock left by a dead owner (SIGKILL, no release)", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-lock-"));
     const { pidFile } = daemonPaths(root, "/some/config");
     mkdirSync(join(root), { recursive: true });
     writeFileSync(pidFile, String(DEAD_PID)); // a crashed daemon's leftover
@@ -411,7 +411,7 @@ describe("single-instance lock", () => {
   });
 
   it("reclaims an empty/half-written lock file from a crash mid-write", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-lock-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-lock-"));
     const { pidFile } = daemonPaths(root, "/some/config");
     writeFileSync(pidFile, ""); // opened but never written before the crash
 
@@ -427,7 +427,7 @@ describe("continuous single-instance ownership (reassertLock)", () => {
   const DEAD_PID = 0x7ffffffe;
 
   it("keeps ownership when the pidfile still records us (no writes)", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-reassert-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-reassert-"));
     const { pidFile } = daemonPaths(root, "/cfg");
     acquireLock(pidFile);
     expect(reassertLock(pidFile)).toBe(true);
@@ -435,7 +435,7 @@ describe("continuous single-instance ownership (reassertLock)", () => {
   });
 
   it("self-heals a pidfile that was deleted out from under a running daemon", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-reassert-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-reassert-"));
     const { pidFile } = daemonPaths(root, "/cfg");
     acquireLock(pidFile);
     unlinkSync(pidFile); // e.g. a manual rm, or a crashed starter's reclaim
@@ -444,7 +444,7 @@ describe("continuous single-instance ownership (reassertLock)", () => {
   });
 
   it("reclaims a pidfile a dead owner left behind", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-reassert-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-reassert-"));
     const { pidFile } = daemonPaths(root, "/cfg");
     mkdirSync(root, { recursive: true });
     writeFileSync(pidFile, String(DEAD_PID));
@@ -453,7 +453,7 @@ describe("continuous single-instance ownership (reassertLock)", () => {
   });
 
   it("surrenders when a *live* peer holds the pidfile, leaving it untouched", () => {
-    const root = mkdtempSync(join(tmpdir(), "ccshare-reassert-"));
+    const root = mkdtempSync(join(tmpdir(), "ccpool-reassert-"));
     const { pidFile } = daemonPaths(root, "/cfg");
     mkdirSync(root, { recursive: true });
     // pid 1 (launchd/init) is always alive and is never us — a stand-in for a live

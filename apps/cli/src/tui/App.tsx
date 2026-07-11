@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useStdin } from "ink";
-import { CAP_KINDS, type Config, type ViewSource } from "@ccshare/core";
+import { CAP_KINDS, type Config, type ViewSource } from "@ccpool/core";
 import { gatherView, type LastRoster } from "../lib/view.js";
 import { toDesignModel, type DesignModel } from "../lib/design-model.js";
 import { loadConfig } from "../lib/config.js";
@@ -16,9 +16,9 @@ import { GITHUB_URL, SITE_URL, link } from "../lib/links.js";
  * as the messages rotate.
  */
 const MESSAGES: { label: string; url?: string }[] = [
-  { label: "★ star ccshare on GitHub", url: GITHUB_URL },
-  { label: "⚲ visit ccshare.hexxt.dev", url: SITE_URL },
-  { label: "♥ sponsor ccshare's work", url: GITHUB_URL },
+  { label: "★ star ccpool on GitHub", url: GITHUB_URL },
+  { label: "⚲ visit ccpool.hexxt.dev", url: SITE_URL },
+  { label: "♥ sponsor ccpool's work", url: GITHUB_URL },
   { label: "↻ share access, don't lose it" },
   { label: "✎ open an issue on GitHub", url: GITHUB_URL },
 ];

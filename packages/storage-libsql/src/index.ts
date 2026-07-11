@@ -1,4 +1,4 @@
-import { UNKNOWN_USER } from "@ccshare/core";
+import { UNKNOWN_USER } from "@ccpool/core";
 
 export const DRIVER = "libsql" as const;
 

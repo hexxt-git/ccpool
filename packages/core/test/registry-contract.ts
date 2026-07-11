@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { RegistryConflictError, type CreateGroupInput } from "../src/index.js";
-import type { LibsqlDatabase } from "@ccshare/storage-libsql";
+import type { LibsqlDatabase } from "@ccpool/storage-libsql";
 
 /**
  * The registry/database contract for `LibsqlDatabase` — the one backend. Proves
@@ -54,7 +54,7 @@ export function runRegistryContract(h: RegistryContractHarness): void {
       // The ledger was provisioned in the same transaction: meta row bound to
       // the account, roster carrying the first member.
       const storage = db.forGroup(group.id);
-      expect(await storage.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-1" });
+      expect(await storage.inspect()).toMatchObject({ kind: "ccpool", accountId: "acc-1" });
       expect((await storage.getUsers()).map((u) => u.name)).toEqual(["sam"]);
     });
 

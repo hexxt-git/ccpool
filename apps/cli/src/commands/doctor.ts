@@ -4,7 +4,7 @@ import {
   readCredentials,
   resolveAccount,
   resolveConfigDir,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { configPath, loadConfig } from "../lib/config.js";
 import { makeViewSource, resolveServerUrl } from "../lib/backend.js";
 
@@ -33,10 +33,10 @@ export async function runDoctor(): Promise<void> {
 
   const cfg = await loadConfig();
   if (!cfg) {
-    console.log("ccshare:      not initialized — run `ccshare init`");
+    console.log("ccpool:      not initialized — run `ccpool init`");
     return;
   }
-  console.log(`ccshare cfg:  ${configPath()}`);
+  console.log(`ccpool cfg:  ${configPath()}`);
   console.log(`name:         ${cfg.name}`);
 
   const serverUrl = resolveServerUrl(cfg);
@@ -44,7 +44,7 @@ export async function runDoctor(): Promise<void> {
   console.log(
     cfg.server?.token
       ? "server auth:  token present"
-      : "server auth:  no token — re-run `ccshare init`"
+      : "server auth:  no token — re-run `ccpool init`"
   );
   try {
     const res = await fetch(new URL("/healthz", serverUrl));
@@ -58,7 +58,7 @@ export async function runDoctor(): Promise<void> {
       console.log(`ledger:       ok (${view.users.length} member(s))`);
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 401) {
-        console.log("ledger:       logged out — token rejected, re-run `ccshare init`");
+        console.log("ledger:       logged out — token rejected, re-run `ccpool init`");
       } else {
         console.log(`ledger:       unreachable (${(err as Error).message})`);
       }

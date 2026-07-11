@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UsageSample, UserShare } from "@ccshare/core";
+import type { UsageSample, UserShare } from "@ccpool/core";
 import { renderUserTable } from "../src/lib/render.js";
 
 const sample = (cap: UsageSample["cap"], pct: number): UsageSample => ({

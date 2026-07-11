@@ -1,4 +1,4 @@
-import { isValidName, type Config } from "@ccshare/core";
+import { isValidName, type Config } from "@ccpool/core";
 import { loadConfig } from "../lib/config.js";
 import { resolveServerUrl } from "../lib/backend.js";
 import { applySharedJoin, probeSharedGroup } from "../lib/setup.js";
@@ -10,7 +10,7 @@ interface InitOptions {
   /** Non-interactive overrides (for scripting/CI). Missing pieces are prompted. */
   name?: string;
   /** Flags leak into shell history — prefer the env fallbacks
-   * CCSHARE_GROUP_PASSWORD / CCSHARE_MEMBER_PASSWORD in CI. */
+   * CCPOOL_GROUP_PASSWORD / CCPOOL_MEMBER_PASSWORD in CI. */
   groupPassword?: string;
   memberPassword?: string;
   /** Auto-confirm the write step (create the group). */
@@ -21,7 +21,7 @@ interface InitOptions {
 
 /**
  * Required first run. One machine joins the shared ledger through the hosted
- * ccshare server: a member enters the group password + their own member password
+ * ccpool server: a member enters the group password + their own member password
  * and never touches a database.
  *
  * Fully interactive by default; any field supplied as a flag skips its prompt,
@@ -34,9 +34,9 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
       `Already initialized (server: ${resolveServerUrl(existing)}, name: ${existing.name}).`
     );
     // Make sure the observer is running — this is idempotent (a no-op if it already
-    // is), so re-running `ccshare init` after an update just brings it back up.
+    // is), so re-running `ccpool init` after an update just brings it back up.
     if (opts.daemon !== false) await runDaemonStart();
-    console.log("Re-run with `ccshare init --reconfigure` to change the setup.");
+    console.log("Re-run with `ccpool init --reconfigure` to change the setup.");
     return;
   }
 
@@ -45,7 +45,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
     if (!done) return;
 
     if (opts.daemon === false) {
-      console.log("Start the shared observer when you're ready: `ccshare daemon start`.");
+      console.log("Start the shared observer when you're ready: `ccpool daemon start`.");
       return;
     }
     // Nothing left to do by hand — bring the observer up now. On a reconfigure we
@@ -58,7 +58,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
       await runDaemonRestart();
     } else await runDaemonStart();
     console.log(
-      "The observer runs in the background — stop it any time with `ccshare daemon stop`."
+      "The observer runs in the background — stop it any time with `ccpool daemon stop`."
     );
   });
 }
@@ -83,16 +83,16 @@ async function sharedInit(
   }
 
   console.log(`You're signed into Claude as ${probe.account.email ?? probe.account.id}.`);
-  console.log(`ccshare server: ${probe.serverUrl}`);
+  console.log(`ccpool server: ${probe.serverUrl}`);
   console.log(
     probe.groupExists
       ? "A group already exists for this account — you'll join it with the team's group password."
-      : "No ccshare group exists for this account yet — you'll create one and set its group password."
+      : "No ccpool group exists for this account yet — you'll create one and set its group password."
   );
 
   const groupPassword =
     opts.groupPassword ??
-    process.env.CCSHARE_GROUP_PASSWORD ??
+    process.env.CCPOOL_GROUP_PASSWORD ??
     (await p.ask(
       probe.groupExists
         ? "Group password (the one your team set)"
@@ -109,7 +109,7 @@ async function sharedInit(
 
   const memberPassword =
     opts.memberPassword ??
-    process.env.CCSHARE_MEMBER_PASSWORD ??
+    process.env.CCPOOL_MEMBER_PASSWORD ??
     (await p.ask(`Your own password for "${name}" (protects your name from impersonation)`));
 
   // With the probe we already know create vs join, so allowCreate follows it —

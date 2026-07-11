@@ -4,19 +4,19 @@ import {
   type Config,
   type IngestSink,
   type ViewSource,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { DEFAULT_SERVER_URL } from "./links.js";
 
 /**
  * The composition seam: commands never touch a database. The daemon writes
  * through an {@link IngestSink} and views read through a {@link ViewSource}, both
- * of which talk to the ccshare server over HTTP. Constructors don't connect, so
+ * of which talk to the ccpool server over HTTP. Constructors don't connect, so
  * these are safe to call eagerly.
  */
 
 /** env override (dev / self-hosted server) → saved config → the hardcoded host. */
 export function resolveServerUrl(cfg?: Config | null, env = process.env): string {
-  return env.CCSHARE_SERVER_URL?.trim() || cfg?.server?.url || DEFAULT_SERVER_URL;
+  return env.CCPOOL_SERVER_URL?.trim() || cfg?.server?.url || DEFAULT_SERVER_URL;
 }
 
 /**
@@ -43,7 +43,7 @@ export function validateServerUrl(url: string): string | null {
 function creds(cfg: Config): { url: string; token: string } {
   const token = cfg.server?.token;
   if (!token) {
-    throw new Error("ccshare setup is incomplete (no token) — re-run `ccshare init`");
+    throw new Error("ccpool setup is incomplete (no token) — re-run `ccpool init`");
   }
   return { url: resolveServerUrl(cfg), token };
 }

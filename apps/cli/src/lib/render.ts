@@ -8,7 +8,7 @@ import {
   type CapKind,
   type UsageSample,
   type UserShare,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import type { ViewModel } from "./view.js";
 
 /**
@@ -98,10 +98,10 @@ export function renderContent(vm: ViewModel, now: number = Date.now()): string[]
 /** Source + warning notes — the footer row. */
 export function renderFooter(vm: ViewModel, now: number = Date.now()): string[] {
   const notes: string[] = [];
-  if (vm.loggedOut) notes.push("logged out — run `ccshare init` to sign back in");
+  if (vm.loggedOut) notes.push("logged out — run `ccpool init` to sign back in");
   if (vm.tokenExpired) notes.push("waiting for Claude Code to refresh auth");
-  if (!vm.daemonRunning) notes.push("daemon not running — run `ccshare daemon start`");
-  if (vm.stale) notes.push("can't reach the ccshare server — showing last-known");
+  if (!vm.daemonRunning) notes.push("daemon not running — run `ccpool daemon start`");
+  if (vm.stale) notes.push("can't reach the ccpool server — showing last-known");
   if (vm.source === "live") notes.push("live poll — start the daemon to record history");
   const freshness =
     vm.source === "state"

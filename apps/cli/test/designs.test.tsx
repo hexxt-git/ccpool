@@ -105,7 +105,7 @@ describe("designs render", () => {
     it(`renders "${d.name}" without throwing, showing identity + members`, () => {
       const { lastFrame, unmount } = render(<Box>{d.render(model, 108, 24, 0)}</Box>);
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("ccshare");
+      expect(frame).toContain("ccpool");
       expect(frame).toContain("alice");
       expect(frame).toContain("unknown");
       expect(frame).toContain("91%"); // 5h tank

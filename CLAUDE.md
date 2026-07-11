@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ccshare gives a group sharing **one Claude subscription** a live, shared picture of
+ccpool gives a group sharing **one Claude subscription** a live, shared picture of
 the account's usage and who's driving it. It is a **read-only observer plus a shared
 ledger** — it never sits in the request path, never proxies, and only reads the
 OAuth token Claude Code already stored.
@@ -27,11 +27,11 @@ pnpm vitest run -t "attributeShares"                     # tests matching a name
 
 # run the built CLI
 node apps/cli/dist/cli.js <command>
-pnpm --filter @ccshare/cli dev <command>   # tsx, no build step
+pnpm --filter @ccpool/cli dev <command>   # tsx, no build step
 
 # run the built server (libSQL — a file: path or a libsql://… Turso URL)
-DATABASE_URL=file:/tmp/ccshare-server.db PORT=8787 node apps/server/dist/index.js
-DATABASE_URL=libsql://… CCSHARE_DB_AUTH_TOKEN=… PORT=8787 node apps/server/dist/index.js
+DATABASE_URL=file:/tmp/ccpool-server.db PORT=8787 node apps/server/dist/index.js
+DATABASE_URL=libsql://… CCPOOL_DB_AUTH_TOKEN=… PORT=8787 node apps/server/dist/index.js
 ```
 
 Both runtimes must stay green — **CI runs the whole suite twice (Node and Bun)**. The
@@ -40,8 +40,8 @@ storage/registry contract suites and the server integration tests run on a libSQ
 external infrastructure** to provision — the whole suite is self-contained.
 
 When manually exercising the CLI/daemon/server, isolate state with env overrides so
-you don't touch real data: `CCSHARE_DIR` (ccshare's `~/.ccshare`), `CLAUDE_CONFIG_DIR`
-(the Claude config dir it observes), and `CCSHARE_SERVER_URL` (points the CLI at a
+you don't touch real data: `CCPOOL_DIR` (ccpool's `~/.ccpool`), `CLAUDE_CONFIG_DIR`
+(the Claude config dir it observes), and `CCPOOL_SERVER_URL` (points the CLI at a
 dev server instead of the hardcoded host).
 
 Note: the husky pre-commit hook only runs `lint-staged` (prettier) — it does **not**
@@ -71,10 +71,10 @@ Monorepo (pnpm workspaces + turbo). The meaningful packages:
 ### One path to the ledger, one boundary
 
 Every machine reaches the shared ledger the **same way**: over HTTP through the
-ccshare server at a hardcoded URL (`apps/cli/src/lib/links.ts#DEFAULT_SERVER_URL`,
-`CCSHARE_SERVER_URL` overrides). Auth is two passwords — a shared **group password**
+ccpool server at a hardcoded URL (`apps/cli/src/lib/links.ts#DEFAULT_SERVER_URL`,
+`CCPOOL_SERVER_URL` overrides). Auth is two passwords — a shared **group password**
 (proves membership) and a per-name **member password** (prevents impersonation) —
-traded at init for a bearer token in the 0600 `~/.ccshare/token` file. The server
+traded at init for a bearer token in the 0600 `~/.ccpool/token` file. The server
 stamps every ingested row with the _authenticated_ member's name; **the CLI never
 touches a database** (there is no selfhost mode, no `config.mode`).
 
@@ -86,7 +86,7 @@ config becomes a sink/source. The server composes the storage-backed pieces
 (`StorageIngestSink`/`StorageViewSource` in `backend/storage.ts`) over a
 group-scoped `Storage`.
 
-`@ccshare/core` ships the HTTP client **and** the storage-backed backend pieces (`StorageIngestSink`/`StorageViewSource`, written against the `Storage` interface) out of one barrel; the concrete adapter lives in `@ccshare/storage-libsql`. The "CLI never opens a database" split is held **by composition**: `apps/cli` imports no `storage-*` adapter and only wires the HTTP pair. There is no lint boundary — keep it a rule: the CLI imports the HTTP backend and view/format helpers from core, never `Storage*` or `@ccshare/storage-libsql`.
+`@ccpool/core` ships the HTTP client **and** the storage-backed backend pieces (`StorageIngestSink`/`StorageViewSource`, written against the `Storage` interface) out of one barrel; the concrete adapter lives in `@ccpool/storage-libsql`. The "CLI never opens a database" split is held **by composition**: `apps/cli` imports no `storage-*` adapter and only wires the HTTP pair. There is no lint boundary — keep it a rule: the CLI imports the HTTP backend and view/format helpers from core, never `Storage*` or `@ccpool/storage-libsql`.
 
 ### The data flow
 
@@ -105,7 +105,7 @@ There is **no IPC**. The contract is files + the server API:
 ### The read path is watermark-cached and window-mirrored (keep it that way)
 
 The TUI refreshes every 2s but the ledger changes at most ~1/min, so the heavy work
-hides behind a change token: every write bumps `ccshare_meta.writeSeq` in the same
+hides behind a change token: every write bumps `ccpool_meta.writeSeq` in the same
 transaction, and `viewCacheKey(token, now)` (`packages/core/src/state/view.ts`) adds
 a 60s time bucket (attribution windows slide with `now`, so an idle ledger must
 still drift). `StorageViewSource` recomputes only when the key moves; the server
@@ -151,7 +151,7 @@ interface** — one driver, one concrete class the server imports directly.
 row/input/error shapes (`packages/core/src/registry/registry.ts`), and `apps/server`
 contains no SQL. The composed signup ops are single transactions that
 deliberately cross into the ledger tables: `createGroupWithMember` writes the group
-row + its `ccshare_meta` + the roster row + the member + the token atomically (a
+row + its `ccpool_meta` + the roster row + the member + the token atomically (a
 lost UNIQUE race throws `RegistryConflictError` and writes NOTHING — no
 compensation), and `addMemberWithToken` does member + roster + `writeSeq` bump +
 token. A registry contract suite (`packages/core/test/registry-contract.ts`) runs
@@ -163,7 +163,7 @@ over a libSQL `:memory:` database. The server composes `LibsqlDatabase` in
 ### Schema changes require a versioned migration (do this every time)
 
 **Any new feature or conflict-guard that touches the DB — a new column, table, or
-`ccshare_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
+`ccpool_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
 edit.** (`SCHEMA_VERSION` is currently **1**.) For each such change:
 
 1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document
@@ -223,7 +223,7 @@ under-reports). Markers are a **strict fallback** — a real message in the inte
   bumps that group's change token once. Retention (`prune`) keeps every table inside
   the 8-day window.
 - **Tests resolve workspace packages to source.** `vitest.config.ts` aliases
-  `@ccshare/*` to `src`, so tests run without a build — but the CLI runtime imports
+  `@ccpool/*` to `src`, so tests run without a build — but the CLI runtime imports
   built `dist`, so build before running it.
 - **Names are the only identity** (`^[A-Za-z0-9-]+$`, `≤ MAX_NAME_LENGTH`), not
   bound to machines; `unknown` is a normal, always-present row that absorbs
@@ -237,17 +237,17 @@ under-reports). Markers are a **strict fallback** — a real message in the inte
   payload name.
 - **Group setup is per-group.** Because one database holds every group, `inspect` is
   scoped to the instance's `groupId` and returns `empty` (this group has no ledger
-  row yet) or `ccshare` (its `ccshare_meta` row exists). The server provisions a
+  row yet) or `ccpool` (its `ccpool_meta` row exists). The server provisions a
   group by calling `initializeSchema(accountId)` on an `empty` group. There is no
   `foreign` state — only the server opens a DB, and always its own.
-- **One ledger, one account.** `ccshare_meta.accountId` binds a group's ledger to a
+- **One ledger, one account.** `ccpool_meta.accountId` binds a group's ledger to a
   Claude `accountUuid` (the UUID, never the email). The server binds a group at
   creation (`POST /v1/groups` requires a hydrated account) and enforces it on ingest
   (409 `account-conflict` on `/v1/ingest`, nothing written); a running daemon halts
   all ledger writes on a mismatch and flags `state.json`'s `account.conflict`. The
   `accountId` column stays nullable so the one-way `null → accountUuid` claim
   (`bindAccount`) remains available.
-- **Secrets stay out of config.json.** The 0600 `~/.ccshare/token` file holds the
+- **Secrets stay out of config.json.** The 0600 `~/.ccpool/token` file holds the
   server bearer; the server stores only sha256 hashes of bearers and self-describing
   scrypt hashes of passwords. The CLI refuses plain-http server URLs except
   localhost.

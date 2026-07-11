@@ -255,7 +255,7 @@ export function Header({
       </Box>
       <Box flexDirection="column" marginLeft={3} flexShrink={1} flexGrow={1}>
         <Text color={color} bold>
-          ccshare
+          ccpool
         </Text>
         <Box flexWrap="wrap">
           {chip(

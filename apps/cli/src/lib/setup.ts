@@ -1,18 +1,18 @@
 import {
   ApiRequestError,
-  CcshareClient,
+  CcpoolClient,
   MIN_PASSWORD_LENGTH,
   resolveAccount,
   resolveConfigDir,
   type Config,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { newConfig, saveConfig } from "./config.js";
 import { resolveServerUrl, validateServerUrl } from "./backend.js";
 
 /**
  * Shared, non-interactive setup core used by the TUI onboarding wizard and the
  * `init` command. It resolves the Claude account, joins (or creates) the group on
- * the ccshare server, and saves the config + bearer token. Account binding is the
+ * the ccpool server, and saves the config + bearer token. Account binding is the
  * server's job (ALGORITHM.md §1.5) — the client only ever speaks HTTP.
  */
 
@@ -59,7 +59,7 @@ export async function probeSharedGroup(
   const urlErr = validateServerUrl(serverUrl);
   if (urlErr) return { ok: false, error: urlErr };
   try {
-    const { exists, memberExists } = await new CcshareClient(serverUrl).lookupGroup(
+    const { exists, memberExists } = await new CcpoolClient(serverUrl).lookupGroup(
       acct.id,
       memberName || undefined
     );
@@ -73,7 +73,7 @@ export async function probeSharedGroup(
   } catch (err) {
     return {
       ok: false,
-      error: `could not reach the ccshare server at ${serverUrl}: ${(err as Error).message}`,
+      error: `could not reach the ccpool server at ${serverUrl}: ${(err as Error).message}`,
     };
   }
 }
@@ -120,7 +120,7 @@ export async function applySharedJoin(opts: {
     }
   }
 
-  const client = new CcshareClient(serverUrl);
+  const client = new CcpoolClient(serverUrl);
   const req = {
     accountId: acct.id,
     groupPassword: opts.groupPassword,
@@ -172,5 +172,5 @@ function describeApiError(err: unknown, serverUrl: string): string {
         return `server error: ${err.message}`;
     }
   }
-  return `could not reach the ccshare server at ${serverUrl}: ${(err as Error).message}`;
+  return `could not reach the ccpool server at ${serverUrl}: ${(err as Error).message}`;
 }

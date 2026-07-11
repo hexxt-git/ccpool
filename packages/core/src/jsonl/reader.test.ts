@@ -54,7 +54,7 @@ describe("parseLine", () => {
 describe("JsonlReader", () => {
   let dir: string;
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), "ccshare-jsonl-"));
+    dir = mkdtempSync(join(tmpdir(), "ccpool-jsonl-"));
     await mkdir(join(dir, "proj-a"), { recursive: true });
   });
   afterEach(async () => {

@@ -6,7 +6,7 @@ import {
   type ApiError,
   type ApiErrorCode,
   type CapKind,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { FailureDamper, hashPassword, hashToken, mintToken, verifyPassword } from "./auth.js";
 import type { GroupRow, MemberRow, ServerDeps } from "./deps.js";
 import { parseCreateGroup, parseIngest, parseJoinGroup, parseLogin } from "./validate.js";

@@ -13,9 +13,9 @@ import {
   type User,
   type UserShare,
   type ViewSource,
-} from "@ccshare/core";
-import { daemonPaths, isAlive, readPid } from "@ccshare/daemon";
-import { ccshareDir } from "./config.js";
+} from "@ccpool/core";
+import { daemonPaths, isAlive, readPid } from "@ccpool/daemon";
+import { ccpoolDir } from "./config.js";
 
 /** Where the numbers on screen came from. */
 export type ViewOrigin = "db" | "state" | "live" | "none";
@@ -94,14 +94,14 @@ export async function gatherView(
   prev?: LastRoster | null
 ): Promise<ViewModel> {
   const configDir = configDirOf(cfg);
-  const { stateFile, pidFile } = daemonPaths(ccshareDir(), configDir);
+  const { stateFile, pidFile } = daemonPaths(ccpoolDir(), configDir);
 
   const state = readState(stateFile);
   const pid = readPid(pidFile);
   const daemonRunning = pid !== null && isAlive(pid);
 
   // Prefer the human-readable email from the Claude config (cached, ~1/min); fall
-  // back to the account uuid recorded in local state (never the ccshare person).
+  // back to the account uuid recorded in local state (never the ccpool person).
   const account = (await resolveEmail(configDir)) ?? state?.account.id ?? null;
 
   let dbSamples: UsageSample[] = [];

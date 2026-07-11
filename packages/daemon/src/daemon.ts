@@ -20,7 +20,7 @@ import {
   type TickBatch,
   type UsageMarker,
   type UsageSample,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { randomUUID } from "node:crypto";
 import {
   acquireLock,
@@ -33,7 +33,7 @@ import {
 } from "./lifecycle.js";
 
 export interface DaemonDeps {
-  /** Where observations go: the ccshare server over HTTP. */
+  /** Where observations go: the ccpool server over HTTP. */
   sink: IngestSink;
   paths: DaemonPaths;
   /** The Claude config dir this daemon observes. */
@@ -403,7 +403,7 @@ export class Daemon {
             this.authRejected = true; // latch: surfaced in state.json → TUI logs out
             this.log.error(
               `shared-mode auth rejected (${err.message}) — your access token was revoked ` +
-                "or rotated; re-run `ccshare init` to re-authenticate"
+                "or rotated; re-run `ccpool init` to re-authenticate"
             );
           } else {
             this.pending = toSend;
@@ -519,7 +519,7 @@ function jitter(ms: number): number {
 /**
  * Acquire the single-instance lock, install signal handlers, run the loop, and
  * always release the lock + close the sink on the way out. This is what the
- * `ccshare daemon run` process calls.
+ * `ccpool daemon run` process calls.
  */
 export async function startDaemon(deps: DaemonDeps): Promise<void> {
   const { pidFile } = deps.paths;

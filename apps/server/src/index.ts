@@ -12,7 +12,7 @@ try {
   backend = resolveServerBackend();
 } catch (err) {
   console.error(
-    `${(err as Error).message}. For local dev, set DATABASE_URL=file:./ccshare-dev.db and run \`pnpm dev\`.`
+    `${(err as Error).message}. For local dev, set DATABASE_URL=file:./ccpool-dev.db and run \`pnpm dev\`.`
   );
   process.exit(1);
 }
@@ -41,7 +41,7 @@ await ensureDatabase();
 
 const app = makeApp(deps);
 const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`ccshare server (libSQL) listening on :${info.port}`);
+  console.log(`ccpool server (libSQL) listening on :${info.port}`);
 });
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {

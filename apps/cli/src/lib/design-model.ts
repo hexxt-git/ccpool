@@ -1,4 +1,4 @@
-import { CAP_KINDS, countdown, UNKNOWN_USER, type CapKind } from "@ccshare/core";
+import { CAP_KINDS, countdown, UNKNOWN_USER, type CapKind } from "@ccpool/core";
 import type { ViewModel, ViewOrigin } from "./view.js";
 import { formatAge } from "./render.js";
 
@@ -57,7 +57,7 @@ export interface DesignModel {
 
 /** What `unknown` actually is — shown when its share is big enough to puzzle people. */
 export const UNKNOWN_NOTE =
-  '"unknown" counts usage on the claude.ai website or mobile app, or usage without ccshare running';
+  '"unknown" counts usage on the claude.ai website or mobile app, or usage without ccpool running';
 
 export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now()): DesignModel {
   const byCapSample = new Map(vm.samples.map((s) => [s.cap, s]));
@@ -125,9 +125,9 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
   // say so and point at the fix. Without shared data we show only what's real (the
   // local tank) and an empty member list, never a fabricated split.
   const alert = vm.loggedOut
-    ? "logged out — run `ccshare init` to sign back in"
+    ? "logged out — run `ccpool init` to sign back in"
     : vm.stale
-      ? "can't reach the ccshare server — showing last-known"
+      ? "can't reach the ccpool server — showing last-known"
       : vm.pollError
         ? `usage poll ${vm.pollError.message} — retrying...`
         : null;
@@ -146,7 +146,7 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
       "account mismatch — this machine's Claude account differs from the shared DB's; not recording to the ledger"
     );
   if (vm.tokenExpired) notes.push("waiting for Claude Code to refresh auth");
-  if (!vm.daemonRunning) notes.push("daemon not running — run `ccshare daemon start`");
+  if (!vm.daemonRunning) notes.push("daemon not running — run `ccpool daemon start`");
   if (vm.source === "live") notes.push("live poll — start the daemon to record history");
 
   return {

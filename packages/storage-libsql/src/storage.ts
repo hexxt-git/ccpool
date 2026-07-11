@@ -16,7 +16,7 @@ import {
   type UsageMarker,
   type UsageSample,
   type User,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { LEDGER_DDL } from "./ddl.js";
 
 /**
@@ -36,18 +36,18 @@ export class LibsqlStorage implements Storage {
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%'"
     );
     const tables = new Set(rows.map((r) => String(r.name)));
-    if (!tables.has("ccshare_meta")) return { kind: "empty" };
+    if (!tables.has("ccpool_meta")) return { kind: "empty" };
     // SELECT * (not named columns) so a DB from another build still reads —
     // a missing column simply comes back undefined, not an error.
     const meta = await this.client.execute({
-      sql: "SELECT * FROM ccshare_meta WHERE group_id = ? LIMIT 1",
+      sql: "SELECT * FROM ccpool_meta WHERE group_id = ? LIMIT 1",
       args: [this.groupId],
     });
     const row = meta.rows[0];
     // The ledger tables exist but this group has no meta row yet — safe to init it.
     if (!row) return { kind: "empty" };
     return {
-      kind: "ccshare",
+      kind: "ccpool",
       schemaVersion: Number(row.schemaVersion ?? SCHEMA_VERSION),
       accountId: row.accountId == null ? null : String(row.accountId),
     };
@@ -60,8 +60,8 @@ export class LibsqlStorage implements Storage {
       [
         ...LEDGER_DDL,
         {
-          sql: `INSERT INTO ccshare_meta (group_id, app, schemaVersion, projectId, createdAt, accountId, writeSeq)
-                VALUES (?, 'ccshare', ?, ?, ?, ?, 0)
+          sql: `INSERT INTO ccpool_meta (group_id, app, schemaVersion, projectId, createdAt, accountId, writeSeq)
+                VALUES (?, 'ccpool', ?, ?, ?, ?, 0)
                 ON CONFLICT(group_id) DO NOTHING`,
           args: [this.groupId, SCHEMA_VERSION, randomUUID(), new Date().toISOString(), accountId],
         },
@@ -73,7 +73,7 @@ export class LibsqlStorage implements Storage {
   async bindAccount(accountId: string): Promise<void> {
     // Claim only when currently unbound, so we never overwrite an existing binding.
     await this.client.execute({
-      sql: "UPDATE ccshare_meta SET accountId = ? WHERE group_id = ? AND accountId IS NULL",
+      sql: "UPDATE ccpool_meta SET accountId = ? WHERE group_id = ? AND accountId IS NULL",
       args: [accountId, this.groupId],
     });
   }
@@ -97,7 +97,7 @@ export class LibsqlStorage implements Storage {
            user TEXT NOT NULL, pct REAL NOT NULL,
            PRIMARY KEY (group_id, cap, windowStart, user))`,
         {
-          sql: "UPDATE ccshare_meta SET schemaVersion = ? WHERE group_id = ?",
+          sql: "UPDATE ccpool_meta SET schemaVersion = ? WHERE group_id = ?",
           args: [toVersion, this.groupId],
         },
       ],
@@ -202,13 +202,13 @@ export class LibsqlStorage implements Storage {
   async getChangeToken(): Promise<string> {
     try {
       const { rows } = await this.client.execute({
-        sql: "SELECT writeSeq FROM ccshare_meta WHERE group_id = ? LIMIT 1",
+        sql: "SELECT writeSeq FROM ccpool_meta WHERE group_id = ? LIMIT 1",
         args: [this.groupId],
       });
       return String(rows[0]?.writeSeq ?? 0);
     } catch (err) {
       throw new Error(
-        "this database predates the current schema (no writeSeq) — re-run `ccshare init`",
+        "this database predates the current schema (no writeSeq) — re-run `ccpool init`",
         { cause: err }
       );
     }
@@ -362,7 +362,7 @@ export class LibsqlStorage implements Storage {
   /** Every write batch ends with this so one tick bumps this group's token once. */
   private bumpWriteSeq(): InStatement {
     return {
-      sql: "UPDATE ccshare_meta SET writeSeq = writeSeq + 1 WHERE group_id = ?",
+      sql: "UPDATE ccpool_meta SET writeSeq = writeSeq + 1 WHERE group_id = ?",
       args: [this.groupId],
     };
   }

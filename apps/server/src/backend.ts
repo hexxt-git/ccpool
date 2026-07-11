@@ -1,4 +1,4 @@
-import { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { LibsqlDatabase } from "@ccpool/storage-libsql";
 import type { ServerDeps } from "./deps.js";
 import { TenantCache } from "./tenants.js";
 
@@ -12,14 +12,14 @@ export interface ServerBackendConfig {
 /**
  * Read the libSQL connection from the environment: `DATABASE_URL` (a `file:`
  * path or a `libsql://…` Turso URL) and, for a remote database,
- * `CCSHARE_DB_AUTH_TOKEN`.
+ * `CCPOOL_DB_AUTH_TOKEN`.
  */
 export function resolveServerBackend(env = process.env): ServerBackendConfig {
   const url = env.DATABASE_URL?.trim();
   if (!url) {
     throw new Error("DATABASE_URL is required — a file: path or a libsql://… (Turso) URL");
   }
-  return { url, authToken: env.CCSHARE_DB_AUTH_TOKEN?.trim() || undefined };
+  return { url, authToken: env.CCPOOL_DB_AUTH_TOKEN?.trim() || undefined };
 }
 
 /**

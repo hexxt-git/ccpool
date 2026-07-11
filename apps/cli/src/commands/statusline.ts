@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import { CAP_LABEL, pctLabel, type LocalState } from "@ccshare/core";
-import { daemonPaths, isAlive, readPid } from "@ccshare/daemon";
-import { ccshareDir, loadConfig } from "../lib/config.js";
+import { CAP_LABEL, pctLabel, type LocalState } from "@ccpool/core";
+import { daemonPaths, isAlive, readPid } from "@ccpool/daemon";
+import { ccpoolDir, loadConfig } from "../lib/config.js";
 
 /**
  * Compact one-liner for Claude Code's status bar. Reads `state.json` only — cheap,
@@ -11,14 +11,14 @@ import { ccshareDir, loadConfig } from "../lib/config.js";
 export async function runStatusline(): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    process.stdout.write("ccshare: run `ccshare init`\n");
+    process.stdout.write("ccpool: run `ccpool init`\n");
     return;
   }
   const configDir = cfg.configDirs[0] ?? process.cwd();
-  const { stateFile, pidFile } = daemonPaths(ccshareDir(), configDir);
+  const { stateFile, pidFile } = daemonPaths(ccpoolDir(), configDir);
 
   if (!existsSync(stateFile)) {
-    process.stdout.write(`ccshare · you ${cfg.name} · ○ no data\n`);
+    process.stdout.write(`ccpool · you ${cfg.name} · ○ no data\n`);
     return;
   }
 
@@ -26,7 +26,7 @@ export async function runStatusline(): Promise<void> {
   try {
     state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
   } catch {
-    process.stdout.write("ccshare · state unreadable\n");
+    process.stdout.write("ccpool · state unreadable\n");
     return;
   }
 
@@ -39,7 +39,7 @@ export async function runStatusline(): Promise<void> {
   // A revoked/rotated bearer can't be retried — surface it loudest so the status
   // bar tells the user to re-init rather than silently showing a stale tank (§13).
   if (state.account.authRejected) {
-    process.stdout.write(`⚠ ccshare logged out · run \`ccshare init\` · you ${cfg.name}\n`);
+    process.stdout.write(`⚠ ccpool logged out · run \`ccpool init\` · you ${cfg.name}\n`);
     return;
   }
 

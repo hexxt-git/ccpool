@@ -20,11 +20,11 @@ import {
 const program = new Command();
 
 program
-  .name("ccshare")
+  .name("ccpool")
   .description("a shared, live picture of one Claude account's usage and who's using it")
   .version("0.0.1");
 
-// Bare `ccshare` opens the TUI: onboarding when unconfigured, the live view
+// Bare `ccpool` opens the TUI: onboarding when unconfigured, the live view
 // otherwise (press `c` there to configure). The subcommands below remain as a
 // scriptable fallback for everything the TUI does interactively.
 program.action(async () => {
@@ -38,11 +38,11 @@ program
   .option("--name <name>", "your name (letters, digits, hyphens); skips the prompt")
   .option(
     "--group-password <password>",
-    "the group's password (prefer env CCSHARE_GROUP_PASSWORD in CI)"
+    "the group's password (prefer env CCPOOL_GROUP_PASSWORD in CI)"
   )
   .option(
     "--member-password <password>",
-    "your member password (prefer env CCSHARE_MEMBER_PASSWORD in CI)"
+    "your member password (prefer env CCPOOL_MEMBER_PASSWORD in CI)"
   )
   .option("-y, --yes", "auto-confirm the write step (create the group)")
   .option("--no-daemon", "don't auto-start the background observer after setup")
@@ -136,7 +136,7 @@ config
   });
 config
   .command("set <key> <value>")
-  .description("change a config value, e.g. `ccshare config set name alex`")
+  .description("change a config value, e.g. `ccpool config set name alex`")
   .action(async (key: string, value: string) => {
     await runConfigSet(key, value);
   });

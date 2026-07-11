@@ -17,7 +17,7 @@ import type {
  * v1 — the relational baseline. One physical database holds every group's ledger;
  * a `group_id` column on every table (and in the composite keys/indexes) scopes
  * the rows to a group, so a single libSQL database (`file:` or a remote
- * `libsql://` Turso) backs the whole multi-tenant server. Tables: `ccshare_meta`
+ * `libsql://` Turso) backs the whole multi-tenant server. Tables: `ccpool_meta`
  * (per group — the account-binding
  * `accountId`, the change-detection `writeSeq`, `schemaVersion`), `users`,
  * `usage_samples`, `message_usage`, `usage_markers`, `reset_events`. Samples and
@@ -37,7 +37,7 @@ export const DEFAULT_GROUP_ID = "default";
 /**
  * The one boundary that must stay strict — the seam core's backend pieces
  * (`StorageIngestSink`/`StorageViewSource`/`LedgerWindow`) are written against,
- * implemented by `LibsqlStorage` in `@ccshare/storage-libsql`. Async even where
+ * implemented by `LibsqlStorage` in `@ccpool/storage-libsql`. Async even where
  * local SQLite is synchronous, so a remote `libsql://` (Turso) fits unchanged.
  * The adapter is dumb — rows in, rows out, no business logic; attribution and
  * view assembly live above this line.
@@ -49,8 +49,8 @@ export const DEFAULT_GROUP_ID = "default";
  * ledger.
  */
 export interface Storage {
-  inspect(): Promise<DbInspection>; // empty | ccshare (for this group)
-  /** Create tables + write ccshare_meta, binding the ledger to `accountId` (§1.5). */
+  inspect(): Promise<DbInspection>; // empty | ccpool (for this group)
+  /** Create tables + write ccpool_meta, binding the ledger to `accountId` (§1.5). */
   initializeSchema(accountId?: string | null): Promise<void>;
   /** Claim an unbound ledger for `accountId` (only sets it when currently null). */
   bindAccount(accountId: string): Promise<void>;
@@ -107,7 +107,7 @@ export interface Storage {
   /**
    * Closed windows for one cap, **newest first** (`windowStart` DESC). `before`
    * is an exclusive cursor (return windows strictly older than it) for paging;
-   * `limit` caps the page (adapter default when omitted). Backs `ccshare history`
+   * `limit` caps the page (adapter default when omitted). Backs `ccpool history`
    * and the TUI matrix — retention is unbounded (Q6), so callers always page.
    */
   getHistoryWindows(

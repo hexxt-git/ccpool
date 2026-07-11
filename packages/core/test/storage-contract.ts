@@ -30,11 +30,11 @@ export function runStorageContract(h: ContractHarness): void {
       await Promise.all(opened.map((s) => s.close().catch(() => {})));
     });
 
-    it("reports empty, then ccshare after init", async () => {
+    it("reports empty, then ccpool after init", async () => {
       const s = await open(h.fresh());
       expect(await s.inspect()).toEqual({ kind: "empty" });
       await s.initializeSchema();
-      expect(await s.inspect()).toMatchObject({ kind: "ccshare" });
+      expect(await s.inspect()).toMatchObject({ kind: "ccpool" });
     });
 
     if (h.pair) {
@@ -74,13 +74,13 @@ export function runStorageContract(h: ContractHarness): void {
     it("binds the ledger to a Claude account and reports it", async () => {
       const s = await open(h.fresh());
       await s.initializeSchema("acc-uuid-1");
-      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-uuid-1" });
+      expect(await s.inspect()).toMatchObject({ kind: "ccpool", accountId: "acc-uuid-1" });
     });
 
     it("leaves the ledger unbound with no account, then claims it once", async () => {
       const s = await open(h.fresh());
       await s.initializeSchema();
-      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: null });
+      expect(await s.inspect()).toMatchObject({ kind: "ccpool", accountId: null });
 
       await s.bindAccount("acc-1");
       expect(boundId(await s.inspect())).toBe("acc-1");
@@ -94,7 +94,7 @@ export function runStorageContract(h: ContractHarness): void {
       await s.initializeSchema("acc-1");
       // v1 baseline already has the account-binding column; migrate must not clobber it.
       await s.migrate(SCHEMA_VERSION);
-      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-1" });
+      expect(await s.inspect()).toMatchObject({ kind: "ccpool", accountId: "acc-1" });
     });
 
     it("upserts users idempotently", async () => {
@@ -194,7 +194,7 @@ export function runStorageContract(h: ContractHarness): void {
         batchOf({ samples: [mkSample("five_hour", 20, "2026-06-29T10:00:00.000Z")] })
       );
       expect(await s.getUsageSamplesSince("2026-06-29T00:00:00.000Z")).toHaveLength(1);
-      expect(await s.inspect()).toMatchObject({ kind: "ccshare", accountId: "acc-1" });
+      expect(await s.inspect()).toMatchObject({ kind: "ccpool", accountId: "acc-1" });
     });
 
     it("returns the sample trajectory since a cutoff, ascending", async () => {
@@ -391,7 +391,7 @@ export function runStorageContract(h: ContractHarness): void {
 }
 
 function boundId(i: DbInspection): string | null {
-  return i.kind === "ccshare" ? i.accountId : null;
+  return i.kind === "ccpool" ? i.accountId : null;
 }
 
 function batchOf(partial: Partial<TickBatch>): TickBatch {

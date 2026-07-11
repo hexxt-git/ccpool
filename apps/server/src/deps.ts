@@ -1,15 +1,15 @@
-import type { GroupRow, IngestSink, StorageViewSource } from "@ccshare/core";
-import type { LibsqlDatabase, LibsqlRegistry } from "@ccshare/storage-libsql";
+import type { GroupRow, IngestSink, StorageViewSource } from "@ccpool/core";
+import type { LibsqlDatabase, LibsqlRegistry } from "@ccpool/storage-libsql";
 
 /**
  * The server's injectable dependencies. Routes in app.ts take `ServerDeps`, so
  * tests wire a libSQL `:memory:` database (test/helpers.ts) with the same
  * composition production uses (backend.ts). All SQL lives in
- * `@ccshare/storage-libsql` on `LibsqlDatabase`/`LibsqlRegistry` — the server
+ * `@ccpool/storage-libsql` on `LibsqlDatabase`/`LibsqlRegistry` — the server
  * only routes and authenticates.
  */
 
-export type { GroupRow, MemberRow } from "@ccshare/core";
+export type { GroupRow, MemberRow } from "@ccpool/core";
 
 /** One group's composed backend: a group-scoped Storage behind the core boundary. */
 export interface Tenant {

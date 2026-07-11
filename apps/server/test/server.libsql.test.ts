@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuthResponse, SharedView } from "@ccshare/core";
+import type { AuthResponse, SharedView } from "@ccpool/core";
 import { makeApp } from "../src/app.js";
 import { makeServerDeps, resolveServerBackend } from "../src/backend.js";
 import type { ServerDeps } from "../src/deps.js";
@@ -14,7 +14,7 @@ import type { ServerDeps } from "../src/deps.js";
  * per-group ledgers isolated by `group_id` in ONE database.
  */
 describe("server on libSQL (file:)", () => {
-  const dir = mkdtempSync(join(tmpdir(), "ccshare-srv-libsql-"));
+  const dir = mkdtempSync(join(tmpdir(), "ccpool-srv-libsql-"));
   // A nested, not-yet-created subdir: the registry must create the parent dir and
   // normalize the URL before opening it (regression: `file:~/…` / missing dir).
   const url = `file:${join(dir, "nested", "server.db")}`;

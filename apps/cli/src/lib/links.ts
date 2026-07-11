@@ -1,13 +1,13 @@
 /** Project URLs and OSC 8 terminal hyperlinks (clickable in supporting terminals). */
-export const GITHUB_URL = "https://github.com/hexxt-git/ccshare";
-export const SITE_URL = "https://ccshare.hexxt.dev";
+export const GITHUB_URL = "https://github.com/hexxt-git/ccpool";
+export const SITE_URL = "https://ccpool.hexxt.dev";
 
 /**
- * The hosted ccshare server every init points at by default. Hardcoded on
- * purpose — members only ever type the two passwords. `CCSHARE_SERVER_URL`
+ * The hosted ccpool server every init points at by default. Hardcoded on
+ * purpose — members only ever type the two passwords. `CCPOOL_SERVER_URL`
  * overrides it for development and self-hosted servers.
  */
-export const DEFAULT_SERVER_URL = "https://api.ccshare.hexxt.dev";
+export const DEFAULT_SERVER_URL = "https://api.ccpool.hexxt.dev";
 
 /**
  * Wrap `text` as a clickable OSC 8 hyperlink to `url`. When `enabled` is false

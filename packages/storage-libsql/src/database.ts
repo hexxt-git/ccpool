@@ -1,5 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
-import type { Storage } from "@ccshare/core";
+import type { Storage } from "@ccpool/core";
 import { LEDGER_DDL, REGISTRY_DDL } from "./ddl.js";
 import { LibsqlRegistry } from "./registry.js";
 import { LibsqlStorage } from "./storage.js";

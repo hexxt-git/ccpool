@@ -1,5 +1,5 @@
 {
-  "name": "@ccshare/storage-libsql",
+  "name": "@ccpool/storage-libsql",
   "type": "module",
   "version": "0.0.1",
   "private": true,
@@ -17,7 +17,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@ccshare/core": "workspace:*",
+    "@ccpool/core": "workspace:*",
     "@libsql/client": "^0.14.0"
   },
   "devDependencies": {

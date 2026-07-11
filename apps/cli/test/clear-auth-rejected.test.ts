@@ -3,16 +3,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
-import type { Config, LocalState } from "@ccshare/core";
-import { daemonPaths } from "@ccshare/daemon";
-import { ccshareDir } from "../src/lib/config.js";
+import type { Config, LocalState } from "@ccpool/core";
+import { daemonPaths } from "@ccpool/daemon";
+import { ccpoolDir } from "../src/lib/config.js";
 import { clearAuthRejected } from "../src/commands/daemon.js";
 
 let dir: string;
 let cfg: Config;
 
 function stateFileFor(configDir: string): string {
-  return daemonPaths(ccshareDir(), configDir).stateFile;
+  return daemonPaths(ccpoolDir(), configDir).stateFile;
 }
 
 function writeState(configDir: string, authRejected: boolean): string {
@@ -34,8 +34,8 @@ function readAuthRejected(stateFile: string): boolean {
 }
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "ccshare-clear-"));
-  process.env.CCSHARE_DIR = join(dir, ".ccshare");
+  dir = mkdtempSync(join(tmpdir(), "ccpool-clear-"));
+  process.env.CCPOOL_DIR = join(dir, ".ccpool");
   cfg = {
     server: { url: "https://api.example.test", token: "tok" },
     name: "sam",
@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.CCSHARE_DIR;
+  delete process.env.CCPOOL_DIR;
 });
 
 describe("clearAuthRejected", () => {

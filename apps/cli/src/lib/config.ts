@@ -1,15 +1,15 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { isValidName, type Config } from "@ccshare/core";
+import { isValidName, type Config } from "@ccpool/core";
 
-/** Everything ccshare keeps for this machine lives under here. */
-export function ccshareDir(env: NodeJS.ProcessEnv = process.env): string {
-  return env.CCSHARE_DIR?.trim() || join(homedir(), ".ccshare");
+/** Everything ccpool keeps for this machine lives under here. */
+export function ccpoolDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.CCPOOL_DIR?.trim() || join(homedir(), ".ccpool");
 }
 
 export function configPath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(ccshareDir(env), "config.json");
+  return join(ccpoolDir(env), "config.json");
 }
 
 /**
@@ -17,7 +17,7 @@ export function configPath(env: NodeJS.ProcessEnv = process.env): string {
  * own 0600 file — never in config.json.
  */
 function tokenPath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(ccshareDir(env), "token");
+  return join(ccpoolDir(env), "token");
 }
 
 export const DEFAULT_POLL_INTERVAL_MS = 60_000;
@@ -37,7 +37,7 @@ export async function loadConfig(env: NodeJS.ProcessEnv = process.env): Promise<
 }
 
 export async function saveConfig(cfg: Config, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const dir = ccshareDir(env);
+  const dir = ccpoolDir(env);
   await mkdir(dir, { recursive: true });
 
   // Strip the bearer token before the config touches disk.
@@ -78,7 +78,7 @@ async function writeToken(token: string, env: NodeJS.ProcessEnv): Promise<void> 
   await chmod(p, 0o600);
 }
 
-/** A config for this machine: it talks to the ccshare server over HTTP. */
+/** A config for this machine: it talks to the ccpool server over HTTP. */
 export function newConfig(opts: {
   serverUrl: string;
   token: string;

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { UNKNOWN_USER } from "@ccshare/core";
+import { UNKNOWN_USER } from "@ccpool/core";
 import { UNKNOWN_NOTE, type DesignModel } from "../../lib/design-model.js";
 import { P, personColor } from "./palette.js";
 import {

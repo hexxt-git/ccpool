@@ -1,4 +1,4 @@
-import { type Config, type ViewSource } from "@ccshare/core";
+import { type Config, type ViewSource } from "@ccpool/core";
 import { loadConfig } from "./config.js";
 import { makeViewSource } from "./backend.js";
 
@@ -12,12 +12,12 @@ import { makeViewSource } from "./backend.js";
 export async function requireInit(): Promise<{ cfg: Config; viewSource: ViewSource } | null> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized. Run `ccshare init` first.");
+    console.error("Not initialized. Run `ccpool init` first.");
     process.exitCode = 1;
     return null;
   }
   if (!cfg.server?.url || !cfg.server.token) {
-    console.error("ccshare setup is incomplete. Run `ccshare init` again.");
+    console.error("ccpool setup is incomplete. Run `ccpool init` again.");
     process.exitCode = 1;
     return null;
   }

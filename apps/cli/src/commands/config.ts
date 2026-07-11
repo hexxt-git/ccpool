@@ -1,11 +1,11 @@
 import {
   ApiRequestError,
-  CcshareClient,
+  CcpoolClient,
   isValidName,
   resolveAccount,
   resolveConfigDir,
   type Config,
-} from "@ccshare/core";
+} from "@ccpool/core";
 import { loadConfig, saveConfig } from "../lib/config.js";
 import { resolveServerUrl } from "../lib/backend.js";
 import { withPrompts } from "../lib/prompt.js";
@@ -16,7 +16,7 @@ const SETTABLE = ["name", "pollIntervalMs", "logLevel"] as const;
 export async function runConfigGet(key?: string): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized — run `ccshare init`.");
+    console.error("Not initialized — run `ccpool init`.");
     process.exitCode = 1;
     return;
   }
@@ -39,7 +39,7 @@ export async function runConfigGet(key?: string): Promise<void> {
 export async function runConfigSet(key: string, value: string): Promise<void> {
   const cfg = await loadConfig();
   if (!cfg) {
-    console.error("Not initialized — run `ccshare init`.");
+    console.error("Not initialized — run `ccpool init`.");
     process.exitCode = 1;
     return;
   }
@@ -54,7 +54,7 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
         return;
       }
       // Names are password-protected: switching identity means logging in as that
-      // member (mints a fresh bearer). Joining a new name goes through `ccshare init`.
+      // member (mints a fresh bearer). Joining a new name goes through `ccpool init`.
       const acct = await resolveAccount(resolveConfigDir());
       if (!acct?.hydrated) {
         console.error("No onboarded Claude account found — sign into Claude Code first.");
@@ -63,9 +63,9 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
       }
       const ok = await withPrompts(async (p) => {
         const memberPassword =
-          process.env.CCSHARE_MEMBER_PASSWORD ?? (await p.ask(`Password for "${value}"`));
+          process.env.CCPOOL_MEMBER_PASSWORD ?? (await p.ask(`Password for "${value}"`));
         try {
-          const auth = await new CcshareClient(resolveServerUrl(cfg)).login({
+          const auth = await new CcpoolClient(resolveServerUrl(cfg)).login({
             accountId: acct.id,
             memberName: value,
             memberPassword,
@@ -75,10 +75,10 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
           return true;
         } catch (err) {
           if (err instanceof ApiRequestError && err.code === "not-found") {
-            console.error("No group exists for this account — run `ccshare init`.");
+            console.error("No group exists for this account — run `ccpool init`.");
           } else if (err instanceof ApiRequestError && err.code === "auth") {
             console.error(
-              `Login failed: ${err.message}. To add "${value}" as a NEW member, run \`ccshare init\`.`
+              `Login failed: ${err.message}. To add "${value}" as a NEW member, run \`ccpool init\`.`
             );
           } else {
             console.error(`Login failed: ${(err as Error).message}`);

@@ -1,6 +1,6 @@
 # Attribution — the per-person split
 
-_Part of the [ccshare algorithm docs](../ALGORITHM.md)._
+_Part of the [ccpool algorithm docs](../ALGORITHM.md)._
 
 ---
 
@@ -126,7 +126,7 @@ It remains an **estimate**: the inter-user weight is the reliable signal (`cache
 
 ## 10. No budgets or quotas
 
-ccshare deliberately has **no budgets, targets, or quotas**. It reports the reality of who used what and leaves it to the group to coordinate how much anyone should use — the tool never prescribes or enforces a share. (The retired `budgets` table was dropped from the schema baseline when v1 was redefined pre-production.)
+ccpool deliberately has **no budgets, targets, or quotas**. It reports the reality of who used what and leaves it to the group to coordinate how much anyone should use — the tool never prescribes or enforces a share. (The retired `budgets` table was dropped from the schema baseline when v1 was redefined pre-production.)
 
 ---
 

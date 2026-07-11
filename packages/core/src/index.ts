@@ -1,10 +1,10 @@
-// @ccshare/core — pure domain logic, runtime-agnostic. No UI, no process.
+// @ccpool/core — pure domain logic, runtime-agnostic. No UI, no process.
 
 export * from "./types.js";
 export * from "./storage/storage.js";
 
 // Registry data types + the atomic-signup conflict error. The registry itself is
-// implemented concretely by the server's backend (@ccshare/storage-libsql); core
+// implemented concretely by the server's backend (@ccpool/storage-libsql); core
 // only owns the shared row/error shapes and the group-scoped `Storage` boundary.
 export { RegistryConflictError } from "./registry/registry.js";
 export type { CreateGroupInput, GroupRow, MemberRow } from "./registry/registry.js";
@@ -16,7 +16,7 @@ export { assembleSharedView, computeSharedView, viewCacheKey, RETENTION_MS } fro
 export type { LedgerRows } from "./state/view.js";
 
 // HTTP client (talks to apps/server over the wire contract below)
-export { ApiRequestError, CcshareClient, HttpIngestSink, HttpViewSource } from "./remote/client.js";
+export { ApiRequestError, CcpoolClient, HttpIngestSink, HttpViewSource } from "./remote/client.js";
 
 // wire contract (imported by both the server and the client)
 export { MIN_PASSWORD_LENGTH } from "./remote/api.js";

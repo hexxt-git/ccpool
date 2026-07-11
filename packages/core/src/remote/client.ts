@@ -72,7 +72,7 @@ async function throwApiError(res: Response): Promise<never> {
 }
 
 /** Thin fetch wrapper for the auth endpoints (init/join/login flows). */
-export class CcshareClient {
+export class CcpoolClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 

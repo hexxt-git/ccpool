@@ -1,6 +1,6 @@
 # The view model — status, TUI, and the watermark cache
 
-_Part of the [ccshare algorithm docs](../ALGORITHM.md)._
+_Part of the [ccpool algorithm docs](../ALGORITHM.md)._
 
 ---
 
@@ -52,7 +52,7 @@ return {
 
 The TUI refreshes every 2 seconds, but the ledger changes at most about once per minute (the daemon cadence). Re-reading a 7-day window of samples (~30k rows) and re-running attribution on every refresh was the original cost problem — hundreds of thousands of heavy queries a day per viewer. The fix is a **write watermark**:
 
-- Every ledger mutation (`recordBatch`, `upsertUser`, `prune`) bumps a single counter, `ccshare_meta.writeSeq`, **inside the same transaction**. Reading it (`getChangeToken`) is one single-row SELECT.
+- Every ledger mutation (`recordBatch`, `upsertUser`, `prune`) bumps a single counter, `ccpool_meta.writeSeq`, **inside the same transaction**. Reading it (`getChangeToken`) is one single-row SELECT.
 - A computed view is cached under `viewCacheKey(token, now)` — the token plus a **60-second time bucket**. The bucket exists because `attributeShares` windows slide with `now`: without it, a group whose daemons stopped writing would be served a frozen split forever. Worst case is one recompute per minute even with zero writes; a healthy group writes ~1/min anyway, so the bucket adds ~nothing.
 - **Server side:** `StorageViewSource.fetchView()` does the 1-row token read; only a changed key recomputes. The heavy read drops from every-2s to ~1/min per viewer (~30×), and `reset_events` scans sit behind a real index now.
 - **Client side:** the same key doubles as the **ETag** of `GET /v1/view`. The client sends `If-None-Match`; the steady-state answer is a bodyless **304** backed by one single-row SELECT on the server. Only a real change re-sends the few-KB view (§13).
@@ -75,12 +75,12 @@ Two surfaces render that model:
 - **`status`** is a plain-string renderer (`status-render.ts`): one frame, **coloured when stdout is a TTY and plain text when piped/redirected**, so `status | grep` and `status > file` stay clean. It targets 70 columns and sheds columns (the per-member bar, then trailing caps) on narrower terminals. Bar colour comes from a calculated green→red ramp (`heat.ts`, hue 120°→0° in HSL); each member's bar matches their name colour.
 - **`tui`** re-runs `gatherView` every 2s (cheap — §8.5; the clock ticks every 1s so countdowns move), rendering the same model through one of three interchangeable Ink layouts — **overview · split · mono**, cycled with **Tab** (Shift+Tab reverses) — adding per-person token totals and scrolling for large groups. The views fill the terminal width and reflow live on resize (`useTermSize`).
 
-Bare **`ccshare`** opens a **TUI-first shell** (`tui/Root.tsx`): unconfigured, it lands on a guided onboarding wizard (the interactive form of `init`); configured, it opens the live view, where **`c`** opens a tabbed **configure** screen (general · daemon, same Tab / Shift+Tab cycling). Configure writes config, tests a storage connection before saving, and starts/stops the daemon — all the interactive form of the flag commands, which stay as a scriptable fallback.
+Bare **`ccpool`** opens a **TUI-first shell** (`tui/Root.tsx`): unconfigured, it lands on a guided onboarding wizard (the interactive form of `init`); configured, it opens the live view, where **`c`** opens a tabbed **configure** screen (general · daemon, same Tab / Shift+Tab cycling). Configure writes config, tests a storage connection before saving, and starts/stops the daemon — all the interactive form of the flag commands, which stay as a scriptable fallback.
 
 Edge states (token expired, daemon down, live-poll badge) render as footnotes. When the **database is unreachable** but the tank is still cached (offline), the member table can't show the real split, so it degrades to a placeholder rather than an empty list: `DISCONNECTED_ROWS` grey `xxxx` rows whose shares are a random — but seed-stable, so they don't flicker across re-renders — partition summing to each cached window, all marked idle, under a red (mono: white) "can't reach the database" line. It reverts to the real per-person split the moment the DB is reachable again.
 
 ```
- ▐▛███▜▌   ccshare · status  ·  you are sam
+ ▐▛███▜▌   ccpool · status  ·  you are sam
 ▝▜█████▛▘  account sam@example.com  ·  2 members (1 active)
   ▘▘ ▝▝    shared db · synced 12s ago · daemon running
 

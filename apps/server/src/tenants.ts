@@ -1,5 +1,5 @@
-import { LedgerWindow, StorageIngestSink, StorageViewSource } from "@ccshare/core";
-import type { LibsqlDatabase } from "@ccshare/storage-libsql";
+import { LedgerWindow, StorageIngestSink, StorageViewSource } from "@ccpool/core";
+import type { LibsqlDatabase } from "@ccpool/storage-libsql";
 import type { GroupRow, Tenant, TenantProvider } from "./deps.js";
 
 /**
