@@ -1,6 +1,6 @@
 # CCSHARE - Retro Website Design & Animation Specification
 
-Based on the provided mockup and subsequent developments, this document outlines the comprehensive design specifications and the custom animation language for the "CCSHARE" website.
+The design specifications and custom animation language for the "CCSHARE" marketing website.
 
 ## 1. Overall Theme & Aesthetics
 

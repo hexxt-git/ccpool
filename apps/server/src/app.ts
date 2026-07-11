@@ -65,35 +65,25 @@ async function readCappedText(req: Request, max: number): Promise<string | null>
   return out + decoder.decode();
 }
 
-/** The whole HTTP surface, deps injected — tests run it against memory deps. */
+/** The whole HTTP surface, deps injected — tests run it against a libSQL `:memory:` db. */
 export function makeApp(deps: ServerDeps): Hono<Vars> {
   const { registry, tenants } = deps;
   const app = new Hono<Vars>();
-
-  // Dev server testing
-  // app.use("*", async (c, next) => {
-  //   const delay = Math.random() * 300 + 200;
-  //   await new Promise((resolve) => setTimeout(resolve, delay));
-  //   await next();
-  // });
 
   const damper = new FailureDamper();
   const lastTouch = new Map<string, number>();
   const tokenCache = new Map<string, { member: MemberRow; group: GroupRow; exp: number }>();
 
   // Rate-limit password guessing per Claude account — the resource under attack —
-  // NOT per client-supplied X-Forwarded-For. Keying on a spoofable header let an
-  // attacker rotate it to land every guess in a fresh bucket, defeating the
-  // lockout entirely. Per-account keying means the failure budget is global for a
-  // target account no matter how many source IPs the attacker uses. (An attacker
-  // can at most briefly delay a legitimate join for that one account — a far
-  // smaller harm than unbounded offline-speed guessing, and the block window is
-  // capped at 15 minutes.)
+  // not per spoofable X-Forwarded-For (which an attacker could rotate to land every
+  // guess in a fresh bucket). Per-account keying makes the failure budget global for
+  // a target no matter how many IPs they use; the worst case is briefly delaying a
+  // legitimate join for that one account, and the block window caps at 15 minutes.
   const damperKey = (accountId: string): string => accountId;
 
   app.get("/healthz", (c) => c.json({ ok: true }));
 
-  // ── auth middleware for the ledger endpoints ──────────────────────────────
+  // auth middleware for the ledger endpoints
   app.use("/v1/ingest", bearer);
   app.use("/v1/bootstrap", bearer);
   app.use("/v1/view", bearer);
@@ -130,8 +120,6 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     c.set("group", hit.group);
     await next();
   }
-
-  // ── group / member auth ───────────────────────────────────────────────────
 
   // Pre-join existence check (unauthenticated): lets the CLI say "you're
   // creating a group" vs "you're joining your team's group" and word the
@@ -256,8 +244,6 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     return c.json({ token, groupId: group.id, memberName: member.name }, 200);
   });
 
-  // ── the ledger surface ────────────────────────────────────────────────────
-
   app.post("/v1/ingest", async (c) => {
     const raw = await readCappedText(c.req.raw, MAX_INGEST_BYTES);
     if (raw === null) return err(c, 413, "invalid", "ingest body too large");
@@ -274,9 +260,8 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     const member = c.get("member");
 
     // §1.5 server-side: a tick observed under a *different* Claude account never
-    // lands in this group's ledger. A null accountId is an unhydrated sender that
-    // can't yet know its account — accepted, since the authenticated member can
-    // only ever write into their own group's ledger.
+    // lands in this group's ledger. A null accountId is an unhydrated sender (accepted
+    // — an authenticated member can only ever write into their own group's ledger).
     if (body.accountId !== null && body.accountId !== group.accountId) {
       return err(c, 409, "account-conflict", "this group is bound to a different Claude account");
     }

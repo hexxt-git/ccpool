@@ -38,7 +38,7 @@ export interface DaemonDeps {
   paths: DaemonPaths;
   /** The Claude config dir this daemon observes. */
   configDir: string;
-  /** Active user name (used for attribution in Phase 5). */
+  /** Active user name (used for attribution). */
   name: string;
   pollIntervalMs: number;
   logLevel?: LogLevel;
@@ -361,15 +361,11 @@ export class Daemon {
       this.log.warn(`jsonl ingest failed: ${(err as Error).message}`);
     }
 
-    // ONE ledger write per tick. A previously failed batch is merged in first so
-    // a transient outage never drops transcript rows (every row inserts
-    // idempotently, so the re-send can't double-count). On an account conflict
-    // everything observed this tick is consumed but deliberately dropped — it
-    // belongs to a different tank.
-    //
-    // `ingestOk` tracks whether our contribution is current — a landed ingest, or
-    // nothing new to send. It stays false on any conflict/failure, gating the clean-
-    // sync heartbeat (`lastSyncAt`) below.
+    // ONE ledger write per tick. A previously failed batch is merged in first (rows
+    // insert idempotently, so a re-send can't double-count); on an account conflict
+    // this tick's observations are dropped — they belong to a different tank.
+    // `ingestOk` (a landed ingest, or nothing to send) gates the clean-sync
+    // heartbeat below; it stays false on any conflict/failure.
     let ingestOk = false;
     if (accountConflict) {
       this.pending = null;
@@ -399,11 +395,9 @@ export class Daemon {
             this.pending = null;
             this.log.warn(`ledger refused the write: ${err.message}`);
           } else if (isAuthError(err)) {
-            // Shared-mode: the bearer was rejected (revoked, or rotated by a
-            // hand-off on another machine). This daemon's token is fixed at
-            // startup, so retrying can't fix it — re-auth (`ccshare init`)
-            // restarts the daemon with a fresh token. Drop the doomed batch and
-            // surface an actionable error instead of silently spinning forever.
+            // Bearer rejected (revoked, or rotated by a hand-off elsewhere). This
+            // daemon's token is fixed at startup, so retrying can't fix it — drop the
+            // batch and surface an actionable error rather than spinning forever.
             this.pending = null;
             pollFailed = true; // back off hard rather than hammering every tick
             this.authRejected = true; // latch: surfaced in state.json → TUI logs out
@@ -423,10 +417,9 @@ export class Daemon {
       }
     }
 
-    // "synced X ago" must reflect a *complete* refresh: a fresh tank reading AND our
-    // contribution landing on the ledger. Only a fully-clean tick advances it, so a
-    // failed poll (429) or ingest (401/unreachable) leaves the footer's age growing
-    // instead of resetting to zero and pretending the account picture is current.
+    // "synced X ago" must reflect a *complete* refresh — a fresh tank reading AND our
+    // contribution landing — so only a fully-clean tick advances it. A failed poll or
+    // ingest leaves the footer's age growing rather than pretending we're current.
     if (pollOk && ingestOk) this.lastSyncAt = nowIso;
 
     await atomicWriteJson(

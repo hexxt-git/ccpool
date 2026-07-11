@@ -231,3 +231,89 @@
 .clawd-shake {
   animation: clawd-shake 0.5s ease-in-out;
 }
+
+/*
+ * Feature card hover FX — "under construction" barber-pole frame.
+ * A caution-stripe border that fades in and scrolls diagonally on hover,
+ * reusing the header's construction-bar technique. The stripes are masked
+ * to a ring so only the border shows, and the pseudo-element lives inside
+ * the border box (so the reveal animation's inline clip-path never clips
+ * it) with pointer-events:none (so it never blocks the card's content).
+ * Stripe color is per-card via --card-fx-color (defaults to orange).
+ */
+.card-fx {
+  position: relative;
+  --card-fx-color: var(--color-retro-orange);
+}
+.card-fx::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 5px;
+  background: linear-gradient(
+    -45deg,
+    var(--card-fx-color) 25%,
+    #000 25%,
+    #000 50%,
+    var(--card-fx-color) 50%,
+    var(--card-fx-color) 75%,
+    #000 75%,
+    #000 100%
+  );
+  background-size: 20px 20px;
+  /* Mask to a border-only ring: fill minus content-box fill. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+  pointer-events: none;
+}
+.card-fx:hover::before {
+  opacity: 1;
+  animation: card-construction-scroll 0.7s linear infinite;
+}
+@keyframes card-construction-scroll {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 20px 0;
+  }
+}
+
+/* Per-word letter wave on hover */
+.wave-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+.wave-letter {
+  display: inline-block;
+}
+.wave-word:hover .wave-letter {
+  animation: letter-wave 0.26s ease-out;
+  animation-delay: calc(var(--i) * 0.085s);
+}
+@keyframes letter-wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.25em);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-fx:hover::before {
+    animation: none;
+  }
+  .wave-word:hover .wave-letter {
+    animation: none;
+  }
+}

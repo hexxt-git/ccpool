@@ -49,7 +49,6 @@ export const DEFAULT_GROUP_ID = "default";
  * ledger.
  */
 export interface Storage {
-  // lifecycle / setup
   inspect(): Promise<DbInspection>; // empty | ccshare (for this group)
   /** Create tables + write ccshare_meta, binding the ledger to `accountId` (§1.5). */
   initializeSchema(accountId?: string | null): Promise<void>;
@@ -85,7 +84,6 @@ export interface Storage {
    */
   getChangeToken(): Promise<string>;
 
-  // reads
   getLatestSamples(): Promise<UsageSample[]>;
   /** The tank trajectory since `since` (all caps, ascending) — drives attribution. */
   getUsageSamplesSince(since: string): Promise<UsageSample[]>;

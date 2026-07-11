@@ -1,4 +1,3 @@
-// ── domain types ──────────────────────────────────────────────────────────────
 // Pure data. No I/O, no UI, no process concerns. Shared by every package.
 
 /** Anthropic reports three independent caps, each with its own reset clock. */
@@ -161,8 +160,6 @@ export interface TickBatch {
   markers: UsageMarker[];
 }
 
-// ── the shared view ───────────────────────────────────────────────────────────
-
 /** Per-name rollup of measured Code activity: total tokens and last seen. */
 export interface MemberSummary {
   user: string;
@@ -182,10 +179,8 @@ export interface SharedView {
   samples: UsageSample[]; // latest per cap
   shares: UserShare[]; // per-person split of each cap window
   members: MemberSummary[]; // per-name measured activity (tokens, last seen)
-  users: User[]; // the roster, so `ccshare users` works in both modes
+  users: User[]; // the roster, so `ccshare users` works
 }
-
-// ── storage inspection ────────────────────────────────────────────────────────
 
 /**
  * Result of inspecting one group's slice of the shared database. Only the server
@@ -207,8 +202,6 @@ export type DbInspection =
       accountId: string | null;
     };
 
-// ── config ────────────────────────────────────────────────────────────────────
-
 export interface Config {
   /** The ccshare server. The bearer token lives in the 0600 token file, never here. */
   server: { url: string; token?: string };
@@ -218,8 +211,6 @@ export interface Config {
   configDirs: string[];
   logLevel: "debug" | "info" | "warn" | "error";
 }
-
-// ── state.json (local snapshot, written atomically by the daemon) ──────────────
 
 /** The local account's latest snapshot, for fast/no-network reads. */
 export interface LocalState {

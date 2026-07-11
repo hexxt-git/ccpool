@@ -78,11 +78,9 @@ export function attributeShares(
   resets: ResetEvent[] = [],
   markers: UsageMarker[] = []
 ): UserShare[] {
-  // A message dated in the future (clock skew on the writing machine) sorts to the
-  // end and never satisfies `t <= cur.t` for any real sample, so it's simply never
-  // matched — its interval's rise falls to `unknown`. That's the safe fallback, so
-  // we deliberately don't hard-filter at `now` (which would risk dropping a genuine
-  // last-interval message under sub-second skew between writer and reader clocks).
+  // A future-dated message (writer clock skew) never matches a real sample and
+  // falls to `unknown` — the safe fallback. We deliberately don't hard-filter at
+  // `now`, which could drop a genuine last-interval message under sub-second skew.
   const msgs = messages
     .map((m) => ({ t: Date.parse(m.timestamp), user: m.user, model: m.model, w: tokenWeight(m) }))
     .filter((m) => Number.isFinite(m.t))
@@ -131,13 +129,10 @@ function attributeCap(
   now: number,
   resetTimes: number[]
 ): UserShare[] {
-  // Bound to the current window. Start at the most recent reset (a *recorded*
-  // event, not a re-detected pct drop — see attributeShares) and never look back
-  // further than the cap's window length.
-  // `start` lands on the last sample *before* the cutoff, so its pct anchors the
-  // window as `unknown`'s baseline. After a long daemon gap that anchor can be
-  // stale (older than the cutoff), but a recorded reset (below) normally supersedes
-  // it, and treating pre-window level as unknown is the conservative bias we want.
+  // Bound to the current window: start at the most recent recorded reset (not a
+  // re-detected pct drop — see attributeShares), and no further back than the cap's
+  // window length. `start` is the last sample before the cutoff, whose pct anchors
+  // `unknown`'s baseline — treating pre-window level as unknown is the bias we want.
   const cutoff = now - CAP_WINDOW_MS[cap];
   let start = 0;
   for (let i = 1; i < capSamples.length; i++) {

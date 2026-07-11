@@ -100,11 +100,9 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     };
   });
 
-  // `unknown` is always a row while a tank is showing — it holds the unattributed
-  // remainder of the tank. Attribution emits it for every cap that has samples, but
-  // a freshly initialized ledger has none yet, so synthesize it (holding whatever
-  // isn't credited to a real member) rather than showing an empty table under a
-  // live tank.
+  // `unknown` is always a row while a tank shows — it holds the unattributed
+  // remainder. Attribution emits it per cap with samples, but a freshly initialized
+  // ledger has none, so synthesize it rather than show an empty table under a tank.
   if (caps.length > 0 && !members.some((m) => m.name === UNKNOWN_USER)) {
     const byCap: Partial<Record<CapKind, number>> = {};
     for (const c of caps) {
@@ -123,10 +121,9 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
     return (b.byCap[sortCap] ?? 0) - (a.byCap[sortCap] ?? 0);
   });
 
-  // The one prominent red line. Logged out (bad/revoked bearer) is NOT the same as
-  // unreachable — say so, and point at the fix. When we can't get the shared data we
-  // show what's real (the local tank, if any) and an empty member list — never a
-  // fabricated split.
+  // The one prominent red line. Logged out (bad/revoked bearer) is NOT unreachable —
+  // say so and point at the fix. Without shared data we show only what's real (the
+  // local tank) and an empty member list, never a fabricated split.
   const alert = vm.loggedOut
     ? "logged out — run `ccshare init` to sign back in"
     : vm.stale
@@ -135,9 +132,8 @@ export function toDesignModel(vm: ViewModel, me: string, now: number = Date.now(
         ? `usage poll ${vm.pollError.message} — retrying...`
         : null;
 
-  // Surface what `unknown` means once it holds a meaningful slice of any cap —
-  // people wonder where the un-attributed usage comes from (web/mobile, or Code
-  // run without the daemon). Below 5% it's just noise; don't clutter the view.
+  // Explain `unknown` once it holds a meaningful slice (web/mobile, or Code run
+  // without the daemon). Below 5% it's just noise; don't clutter the view.
   const unknown = members.find((m) => m.name === UNKNOWN_USER);
   const unknownPct = unknown ? Math.max(0, ...Object.values(unknown.byCap)) : 0;
   const unknownNote = unknownPct > 5;

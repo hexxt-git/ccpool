@@ -22,8 +22,41 @@ import PixelBullet from "../components/PixelBullet.astro";
             data-color="stripes"
             data-delay="0.4"
           >
-            STOP HOGGING <br />
-            THE <span class="text-retro-orange">TOKENS</span>
+            <span class="wave-word"
+              >{
+                "STOP".split("").map((c, i) => (
+                  <span class="wave-letter" style={`--i:${i}`}>
+                    {c}
+                  </span>
+                ))
+              }</span
+            >{" "}<span class="wave-word"
+              >{
+                "HOGGING".split("").map((c, i) => (
+                  <span class="wave-letter" style={`--i:${i}`}>
+                    {c}
+                  </span>
+                ))
+              }</span
+            >
+            <br />
+            <span class="wave-word"
+              >{
+                "THE".split("").map((c, i) => (
+                  <span class="wave-letter" style={`--i:${i}`}>
+                    {c}
+                  </span>
+                ))
+              }</span
+            >{" "}<span class="wave-word text-retro-orange"
+              >{
+                "TOKENS".split("").map((c, i) => (
+                  <span class="wave-letter" style={`--i:${i}`}>
+                    {c}
+                  </span>
+                ))
+              }</span
+            >
           </h1>
           <p
             class="retro-reveal font-vt text-retro-body mt-3 w-fit leading-[1.1] text-[#ccc]"
@@ -81,7 +114,7 @@ import PixelBullet from "../components/PixelBullet.astro";
       <ul class="grid w-full grid-cols-3 gap-5 max-[950px]:grid-cols-1 max-[950px]:gap-4">
         <li>
           <article
-            class="feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
+            class="card-fx feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
           >
             <h2 class="font-press text-retro-card-title text-retro-orange leading-[1.4]">
               EVERYONE GETS A SLICE
@@ -95,7 +128,8 @@ import PixelBullet from "../components/PixelBullet.astro";
 
         <li>
           <article
-            class="feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
+            class="card-fx feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
+            style="--card-fx-color: var(--color-retro-yellow)"
           >
             <h2 class="font-press text-retro-card-title text-retro-yellow leading-[1.4]">
               USAGE GETS MAXIMIZED
@@ -109,7 +143,8 @@ import PixelBullet from "../components/PixelBullet.astro";
 
         <li>
           <article
-            class="feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
+            class="card-fx feature-reveal border-retro-border bg-retro-card flex h-full flex-col gap-2 border-2 px-5 py-4 opacity-0"
+            style="--card-fx-color: var(--color-retro-green)"
           >
             <h2 class="font-press text-retro-card-title text-retro-green leading-[1.4]">
               SIMPLE CLI

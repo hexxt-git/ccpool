@@ -3,7 +3,6 @@ import { Box, Text } from "ink";
 import type { CapKind, DesignMember, DesignModel } from "../../lib/design-model.js";
 import { M, P, heat } from "./palette.js";
 
-// ── string helpers ───────────────────────────────────────────────────────────────
 export const rep = (s: string, n: number): string => s.repeat(Math.max(0, n));
 export const pad = (s: string, w: number): string =>
   s.length >= w ? s : s + rep(" ", w - s.length);
@@ -24,7 +23,6 @@ export const scrollLabel = (off: number, visible: number, total: number): string
 
 export const CLAWD = [" ▐▛███▜▌", "▝▜█████▛▘", "  ▘▘ ▝▝"];
 
-// ── primitives ────────────────────────────────────────────────────────────────────
 export function Bar({
   pct: p,
   width,

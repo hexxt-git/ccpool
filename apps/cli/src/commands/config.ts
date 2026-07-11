@@ -53,10 +53,8 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      // A name is password-protected — switching identities means logging in as
-      // that member, which mints a fresh bearer token. A name that doesn't exist
-      // yet has no password to log into; joining it goes through `ccshare init` (it
-      // needs the group password too).
+      // Names are password-protected: switching identity means logging in as that
+      // member (mints a fresh bearer). Joining a new name goes through `ccshare init`.
       const acct = await resolveAccount(resolveConfigDir());
       if (!acct?.hydrated) {
         console.error("No onboarded Claude account found — sign into Claude Code first.");
@@ -92,10 +90,9 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      // A hand-off mints a fresh bearer. A running daemon baked the old token into
-      // its sink at startup and the server attributes by token, not by the name in
-      // the payload — so unless we restart it, activity keeps landing under the
-      // previous member.
+      // A hand-off mints a fresh bearer, but a running daemon baked the old token in
+      // at startup and the server attributes by token — so restart it, or activity
+      // keeps landing under the previous member.
       sharedIdentityChanged = true;
       break;
     }

@@ -130,12 +130,9 @@ export class StorageIngestSink implements IngestSink {
     this.finalizeIntervalMs = opts.finalizeIntervalMs ?? DEFAULT_FINALIZE_INTERVAL_MS;
     this.now = opts.now ?? Date.now;
     this.window = opts.window;
-    // Start the retention clock at construction, not the epoch. A sink is rebuilt
-    // on every (re)open — a daemon restart, or the server reopening an
-    // LRU-evicted tenant — and a 0 here would make the very first ingest prune
-    // immediately. Under tenant churn that turns prune (4 DELETEs + a change-token
-    // bump that moves the view ETag) into near-per-ingest work instead of the
-    // intended once-per-interval sweep.
+    // Clock starts at construction, not the epoch: a sink is rebuilt on every
+    // (re)open, and a 0 here would prune on the very first ingest — turning the
+    // once-per-interval sweep into near-per-ingest work under tenant churn.
     this.lastPruneMs = this.now();
   }
 
@@ -196,12 +193,10 @@ export class StorageIngestSink implements IngestSink {
 
   /**
    * Freeze any window whose closing reset is now past the grace period into an
-   * immutable {@link HistoryWindow} + shares (ADR-0002/0008). Throttled — grace is
-   * 30 min, so a per-minute check is ample. A window's bounds are two consecutive
-   * resets of the cap (the first window opens at the earliest retained sample);
-   * shares come from the same `attributeShares` the live view uses, anchored at the
-   * window end and bounded by its opening reset. `recordHistoryWindow` is
-   * idempotent, and `frozen` skips recompute once done.
+   * immutable {@link HistoryWindow} + shares (ADR-0002/0008). Throttled (grace is 30
+   * min). A window spans two consecutive resets of the cap (the first opens at the
+   * earliest retained sample); shares come from the same `attributeShares` the live
+   * view uses. `recordHistoryWindow` is idempotent and `frozen` skips recompute.
    */
   private async maybeFinalize(now: number): Promise<void> {
     if (now - this.lastFinalizeMs < this.finalizeIntervalMs) return;

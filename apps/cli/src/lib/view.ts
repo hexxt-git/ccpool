@@ -23,7 +23,7 @@ export type ViewOrigin = "db" | "state" | "live" | "none";
 /** The single model `status` and `tui` both render from (§10). */
 export interface ViewModel {
   samples: UsageSample[];
-  shares: UserShare[]; // per-user rows (Phase 5); empty until then
+  shares: UserShare[]; // per-person split of each cap window
   members: MemberSummary[]; // per-name measured activity (tokens, last seen)
   users: User[]; // the roster from the shared ledger
   source: ViewOrigin;
@@ -117,16 +117,13 @@ export async function gatherView(
     members = view.members;
     users = view.users;
   } catch (e) {
-    // A 401 isn't "unreachable" — the server reached us and rejected the bearer
-    // (the token is unknown or was revoked, e.g. the ledger was reset). That's a
-    // logged-out state, not a network problem, and the views must say so.
+    // A 401 isn't "unreachable" — the server rejected the bearer (unknown/revoked).
+    // That's logged-out, not a network problem, and the views must say so.
     if (e instanceof ApiRequestError && e.status === 401) loggedOut = true;
     else {
       stale = true;
-      // Keep showing the last-known roster instead of a blank members table —
-      // a transient backend blip must not erase everyone. The caller (the TUI)
-      // passes its last clean view; samples fall back to state.json just below,
-      // the roster falls back to `prev` here.
+      // Keep the last-known roster instead of blanking the members table on a
+      // transient blip: samples fall back to state.json below, the roster to `prev`.
       if (prev) {
         shares = prev.shares;
         members = prev.members;

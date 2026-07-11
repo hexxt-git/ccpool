@@ -166,9 +166,8 @@ export function InitScreen({
       setCommit("error");
       return;
     }
-    // A prior daemon may have latched `authRejected` into state.json (§13). We just
-    // minted a fresh, valid token, so that latch is stale — clear it before the
-    // status screen reads it, or gatherView would bounce us right back here in a loop.
+    // We just minted a fresh token, so any prior `authRejected` latch (§13) is stale.
+    // Clear it before the status screen reads it, or gatherView loops us back here.
     clearAuthRejected(res.config);
     spawnDaemon(res.config);
     onDone(res.config);
@@ -260,7 +259,6 @@ export function InitScreen({
         }
         return;
       }
-      // done
       if (commit === "saving") return;
       if (key.return) void finish();
       else if (key.escape) {

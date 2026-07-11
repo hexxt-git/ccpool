@@ -11,7 +11,7 @@ import { heat } from "./heat.js";
  * bar, then trailing cap columns) rather than wrapping.
  */
 
-// ── palette (only emitted when color is on) ─────────────────────────────────────
+// palette (only emitted when color is on)
 const HEX = {
   cream: "#f0e8c8",
   dim: "#8c8c96",
@@ -42,7 +42,6 @@ export function makePaint(enabled: boolean): Paint {
   };
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────────
 const rep = (s: string, n: number) => s.repeat(Math.max(0, n));
 const padEnd = (s: string, w: number) => (s.length >= w ? s : s + rep(" ", w - s.length));
 const padStart = (s: string, w: number) => (s.length >= w ? s : rep(" ", w - s.length) + s);
@@ -54,7 +53,6 @@ function bar(p: number, w: number, paint: Paint, color?: string): string {
 const personColor = (m: DesignMember, i: number) =>
   m.name === "unknown" ? HEX.faint : PERSON[i % PERSON.length]!;
 
-// ── sections ─────────────────────────────────────────────────────────────────────
 function header(m: DesignModel, width: number, paint: Paint): string[] {
   const CLAWD = [" ▐▛███▜▌", "▝▜█████▛▘", "  ▘▘ ▝▝"];
   const lines = [

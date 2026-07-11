@@ -134,11 +134,9 @@ export function App({
     mode === "history" ? SHORTCUTS_HISTORY : onConfigure ? SHORTCUTS_CONFIG : SHORTCUTS;
   const wide = innerCols >= current.label.length + shortcutsText.length + 4;
   const footerH = wide ? 1 : 2;
-  // Leave the last terminal row unused so the rendered output stays strictly
-  // shorter than the terminal. At full height Ink falls back to clearing the
-  // whole screen every frame (ink.js: outputHeight >= stdout.rows), which
-  // flickers on iTerm and most terminals; one row of slack keeps it on the
-  // flicker-free incremental path.
+  // Leave the last terminal row unused so output stays strictly shorter than the
+  // terminal. At full height Ink clears the whole screen every frame (outputHeight
+  // >= stdout.rows), which flickers; one row of slack keeps the incremental path.
   const appRows = Math.max(1, rows - 1);
   const bodyRows = Math.max(4, appRows - footerH);
 

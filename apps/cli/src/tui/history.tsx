@@ -70,7 +70,6 @@ export function renderHistory(
 
   if (state.expanded) return expandedView(title, cap, state, cols, rows);
 
-  // ── the matrix ────────────────────────────────────────────────────────────
   const ranked = rankMembers(state.windows);
   const avail = cols - WCOL - OCOL - 2;
   const fit = Math.max(1, Math.floor(avail / (MCOL + 1)));

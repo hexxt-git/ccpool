@@ -18,7 +18,7 @@ function pathsFor(cfgConfigDir: string) {
   return daemonPaths(ccshareDir(), cfgConfigDir);
 }
 
-// ── quiet, config-taking cores (used by the TUI, which can't print to stdout) ──────
+// quiet, config-taking cores (used by the TUI, which cannot print to stdout)
 
 /** Daemon file locations for a config. */
 export function daemonPathsFor(cfg: Config): DaemonPaths {
