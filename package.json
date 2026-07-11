@@ -32,6 +32,25 @@
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   },
+  "prettier": {
+    "semi": true,
+    "singleQuote": false,
+    "trailingComma": "es5",
+    "printWidth": 100,
+    "tabWidth": 2,
+    "plugins": [
+      "prettier-plugin-astro",
+      "prettier-plugin-tailwindcss"
+    ],
+    "overrides": [
+      {
+        "files": "*.astro",
+        "options": {
+          "parser": "astro"
+        }
+      }
+    ]
+  },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,mjs,mts,cjs,cts}": [
       "prettier --write"

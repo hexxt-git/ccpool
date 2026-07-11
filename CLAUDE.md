@@ -71,6 +71,10 @@ Monorepo (pnpm workspaces + turbo). The meaningful packages:
 - `apps/server` — the multi-tenant HTTP server (Hono; libSQL).
 - `apps/web` — unrelated Astro marketing site.
 
+### Design system (frontend and web)
+
+strictly follow `apps/web/DESIGN.md`
+
 ### One path to the ledger, one boundary
 
 Every machine reaches the shared ledger the **same way**: over HTTP through the
@@ -167,7 +171,7 @@ over a libSQL `:memory:` database. The server composes `LibsqlDatabase` in
 
 **Any new feature or conflict-guard that touches the DB — a new column, table, or
 `ccpool_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
-edit.** (`SCHEMA_VERSION` is currently **1**.) For each such change:
+edit.** (`SCHEMA_VERSION` is currently **1**.) (update this too) For each such change:
 
 1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document
    what the new version adds.
@@ -187,10 +191,6 @@ edit.** (`SCHEMA_VERSION` is currently **1**.) For each such change:
 Migrations must stay backward-compatible: an older server still reads/writes a newer
 DB (inspect uses `SELECT *`, writers only touch known columns). Don't make a new
 schema version refuse older servers.
-
-### Design system
-
-strictly follow ./DESIGN.md
 
 ### Attribution lives in core, not storage
 

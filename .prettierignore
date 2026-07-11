@@ -1,5 +1,1 @@
-node_modules
-dist
-.turbo
-.astro
 pnpm-lock.yaml
