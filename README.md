@@ -9,7 +9,7 @@
 
 When a group shares one Claude subscription (Pro or Max), everyone collides on the same limits: someone burns the 5-hour window by noon, someone quietly eats the weekly cap, and nobody finds out until it's gone. ccpool gives the group a live, shared view of the account's usage broken down by person, so fair use becomes something you can see and negotiate instead of guess at.
 
-<img width="1072" height="549" alt="2026-07-11_23-20-31" src="https://github.com/user-attachments/assets/aa9f9e96-e577-4793-a79e-9da916bcc459" />
+<img width="1206" height="700" alt="combined" src="https://github.com/user-attachments/assets/98a8c2fa-74a0-4e93-bb05-ab30691628d6" />
 
 Available as a terminal dashboard (`ccpool tui`), a one-shot snapshot (`ccpool status`), and a Claude Code statusline (`ccpool statusline`).
 
