@@ -56,11 +56,7 @@
         (e.__SV = 1));
     })(document, window.posthog || []);
     posthog.init(apiKey || "", {
-      // Same-origin reverse proxy (see vercel.json rewrites) so events aren't
-      // dropped by tracking blockers. Override with PUBLIC_POSTHOG_HOST to
-      // point straight at PostHog (e.g. https://us.i.posthog.com).
-      api_host: apiHost || "/ingest",
-      ui_host: "https://us.posthog.com",
+      api_host: apiHost || "https://us.i.posthog.com",
       defaults: "2026-05-30",
       capture_pageview: "history_change",
     });
