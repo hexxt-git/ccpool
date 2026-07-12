@@ -57,6 +57,9 @@
     })(document, window.posthog || []);
     posthog.init(apiKey || "", {
       api_host: apiHost || "https://us.i.posthog.com",
+      // Managed reverse proxy: api_host is our own subdomain, so ui_host must
+      // point at PostHog itself for toolbar/session-replay links to resolve.
+      ui_host: "https://us.posthog.com",
       defaults: "2026-05-30",
       capture_pageview: "history_change",
     });
