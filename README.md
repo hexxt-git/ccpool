@@ -148,4 +148,4 @@ Contributions welcome, whether bugs, features, or docs. See the [GitHub reposito
 
 ## 📜 License
 
-Open-sourced under the MIT License.
+Open-sourced under the [MIT License](LICENSE).
