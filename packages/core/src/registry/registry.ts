@@ -51,8 +51,9 @@ export interface CreateGroupInput {
 }
 
 // The concrete registry (`LibsqlRegistry` in `@ccpool/storage-libsql`) exposes:
-//   getGroupByAccount, getMember, resolveToken, insertToken, touchToken, and the
-//   two composed atomic-signup ops createGroupWithMember / addMemberWithToken.
+//   getGroupByAccount, getMember, resolveToken, insertToken, touchToken,
+//   deleteStaleTokens (bearer retention), and the two composed atomic-signup ops
+//   createGroupWithMember / addMemberWithToken.
 // Each composed op is one `batch(..., "write")` — every value is known up front —
 // and deliberately crosses into the ledger tables (the group's `ccpool_meta`
 // row, the `users` roster row, the `writeSeq` bump): provisioning atomically with

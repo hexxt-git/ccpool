@@ -288,13 +288,11 @@ export class Daemon {
           this.log.info(`reset detected on ${e.cap} (was ${e.previousPct}%)`);
         }
         batch.resets.push(...resets);
-        // Report-on-change: only send samples that move the tank vs
-        // the last reading for that cap (or that accompany a reset). Flat repeats
-        // are exactly what the server's envelope filter would discard, so omitting
-        // them changes the stored trajectory not at all — it only spares the
-        // request. A steady tank with no new messages/markers sends no ingest at
-        // all, collapsing the steady-state request rate. Server-side liveness is
-        // measured-activity based, not ping based, so nothing user-visible regresses.
+        // Report-on-change: only send samples that move the tank vs the last
+        // reading for that cap (or that accompany a reset). Flat repeats are what
+        // the server's envelope filter would discard anyway, so omitting them spares
+        // the request without changing the stored trajectory — a steady tank with no
+        // new messages/markers sends no ingest at all.
         const changedSamples = fresh.filter((s) => {
           const prior = this.prev.find((p) => p.cap === s.cap);
           return !prior || prior.pct !== s.pct;

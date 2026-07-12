@@ -90,6 +90,22 @@ export class LibsqlRegistry {
     });
   }
 
+  /**
+   * Bearer retention: delete every token last used (or, if never used, created)
+   * before `before` (ISO 8601), returning how many were removed. A live daemon
+   * touches its token ~once a minute, so a token untouched for the whole window is
+   * genuinely abandoned — this bounds the `tokens` table without logging anyone
+   * active out. `COALESCE(lastUsedAt, createdAt)` covers a token minted but never
+   * used (login/rejoin that was thrown away).
+   */
+  async deleteStaleTokens(before: string): Promise<number> {
+    const { rowsAffected } = await this.client.execute({
+      sql: `DELETE FROM tokens WHERE COALESCE(lastUsedAt, createdAt) < ?`,
+      args: [before],
+    });
+    return rowsAffected;
+  }
+
   async createGroupWithMember(
     input: CreateGroupInput
   ): Promise<{ group: GroupRow; member: MemberRow }> {

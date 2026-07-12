@@ -58,7 +58,7 @@ export const LEDGER_DDL: string[] = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_reset_events_at ON reset_events (group_id, at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_reset_events_uniq ON reset_events (group_id, cap, at)`,
-  // Immutable history of completed cap cycles (ADR-0002/0005). Retained unbounded.
+  // Immutable history of completed cap cycles. Retained unbounded.
   `CREATE TABLE IF NOT EXISTS history_windows (
      group_id TEXT NOT NULL,
      cap TEXT NOT NULL,

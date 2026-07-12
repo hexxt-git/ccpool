@@ -26,6 +26,10 @@ const TOKEN_TOUCH_INTERVAL_MS = 60_000;
  */
 const TOKEN_CACHE_TTL_MS = 60_000;
 const TOKEN_CACHE_MAX = 20_000;
+/** A bearer untouched for this long is abandoned (a live daemon touches ~1/min). */
+const TOKEN_STALE_MS = 90 * 24 * 3600_000;
+/** Sweep abandoned bearers at most this often, piggybacked on an authed request. */
+const TOKEN_SWEEP_INTERVAL_MS = 6 * 3600_000;
 
 type Vars = { Variables: { member: MemberRow; group: GroupRow } };
 
@@ -73,6 +77,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
   const damper = new FailureDamper();
   const lastTouch = new Map<string, number>();
   const tokenCache = new Map<string, { member: MemberRow; group: GroupRow; exp: number }>();
+  let lastTokenSweep = 0;
 
   // Rate-limit password guessing per Claude account — the resource under attack —
   // not per spoofable X-Forwarded-For (which an attacker could rotate to land every
@@ -113,8 +118,22 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     }
 
     if (now - (lastTouch.get(tokenHash) ?? 0) >= TOKEN_TOUCH_INTERVAL_MS) {
+      // Re-insert last (rough LRU) and bound the map like the token cache — an
+      // unbounded touch map would grow with every distinct bearer ever seen.
+      lastTouch.delete(tokenHash);
       lastTouch.set(tokenHash, now);
+      if (lastTouch.size > TOKEN_CACHE_MAX) {
+        const oldest = lastTouch.keys().next().value;
+        if (oldest !== undefined) lastTouch.delete(oldest);
+      }
       await registry.touchToken(tokenHash).catch(() => {});
+    }
+    // Durable retention: sweep abandoned bearers on a long throttle (best-effort,
+    // off the request's critical path) so the tokens table stays bounded.
+    if (now - lastTokenSweep >= TOKEN_SWEEP_INTERVAL_MS) {
+      lastTokenSweep = now;
+      const before = new Date(now - TOKEN_STALE_MS).toISOString();
+      void registry.deleteStaleTokens(before).catch(() => {});
     }
     c.set("member", hit.member);
     c.set("group", hit.group);
@@ -166,7 +185,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
         // lost the creation race — the unique accountId constraint is the arbiter
         return err(c, 409, "conflict", "a group for this Claude account already exists — join it");
       }
-      return err(c, 500, "invalid", `could not provision the group: ${(e as Error).message}`);
+      return err(c, 500, "server", `could not provision the group: ${(e as Error).message}`);
     }
   });
 
@@ -280,7 +299,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
       if (e instanceof AccountConflictError) {
         return err(c, 409, "account-conflict", e.message);
       }
-      return err(c, 500, "invalid", (e as Error).message);
+      return err(c, 500, "server", (e as Error).message);
     }
     return c.body(null, 204);
   });
@@ -296,6 +315,9 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     const group = c.get("group");
     const tenant = await tenants.get(group);
     const now = Date.now();
+    // Tick finalization on the read path so a quiet group still freezes windows
+    // (throttled + idempotent + best-effort).
+    await tenant.finalizer.maybeFinalize(now).catch(() => {});
     // The view-source cache key doubles as the ETag: one single-row read
     // answers the steady-state 2s poll with a 304 and zero body bytes.
     const etag = `"${await tenant.view.currentKey(now)}"`;
@@ -306,7 +328,7 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     return c.json(view, 200, { ETag: etag });
   });
 
-  // Cold history read: a page of frozen windows for one cap, newest first (ADR-0005).
+  // Cold history read: a page of frozen windows for one cap, newest first.
   app.get("/v1/history", async (c) => {
     const capQ = c.req.query("cap") ?? "five_hour";
     if (!CAP_KINDS.includes(capQ as CapKind)) return err(c, 400, "invalid", "unknown cap");
@@ -315,6 +337,8 @@ export function makeApp(deps: ServerDeps): Hono<Vars> {
     const limit =
       Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(200, Math.floor(limitRaw)) : 50;
     const tenant = await tenants.get(c.get("group"));
+    // Freeze any past-grace window before reading (same reason as /v1/view).
+    await tenant.finalizer.maybeFinalize(Date.now()).catch(() => {});
     const page = await tenant.view.history({ cap: capQ as CapKind, before, limit });
     return c.json(page);
   });

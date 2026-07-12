@@ -10,7 +10,7 @@ import type { HistoryPage, HistoryQuery, SharedView } from "../types.js";
 export interface ViewSource {
   fetchView(now?: number): Promise<SharedView>;
   /**
-   * A page of frozen history windows for one cap, newest first (ADR-0005). Cold
+   * A page of frozen history windows for one cap, newest first. Cold
    * path — read on demand by `ccpool history` and the TUI history mode, never on
    * the 2s refresh.
    */

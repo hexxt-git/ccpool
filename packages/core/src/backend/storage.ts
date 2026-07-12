@@ -1,12 +1,4 @@
-import type {
-  CapKind,
-  HistoryShare,
-  MessageUsage,
-  SharedView,
-  TickBatch,
-  UsageMarker,
-  UsageSample,
-} from "../types.js";
+import type { CapKind, SharedView, TickBatch, UsageSample } from "../types.js";
 import type { Storage } from "../storage/storage.js";
 import { isEmptyBatch, SCHEMA_VERSION } from "../storage/storage.js";
 import type { HistoryPage, HistoryQuery, HistoryWindowView } from "../types.js";
@@ -16,7 +8,7 @@ import {
   RETENTION_MS,
   viewCacheKey,
 } from "../state/view.js";
-import { attributeShares } from "../state/shares.js";
+import { HistoryFinalizer } from "./finalizer.js";
 import type { LedgerWindow } from "./window.js";
 import {
   AccountConflictError,
@@ -28,24 +20,15 @@ import type { ViewSource } from "./view-source.js";
 
 /** How often one sink sweeps old rows out. Cheap (indexed deletes), so generous. */
 const DEFAULT_PRUNE_INTERVAL_MS = 6 * 3600_000;
-/**
- * How long after a reset a just-closed window stays amendable before it freezes
- * into history (ADR-0002). Late idempotent re-sends within this window still move
- * its shares; after it, the record is immutable.
- */
-const DEFAULT_GRACE_MS = 30 * 60_000;
-/** Finalization is checked at most this often per sink — grace is 30 min, so cheap. */
-const DEFAULT_FINALIZE_INTERVAL_MS = 60_000;
 
 /**
  * Reduces a daemon's raw per-tick samples to the **monotonic usage envelope** —
- * the only thing attribution consumes (ADR-0004). A sample is kept only when it
- * raises the running max for its cap within the current window; flat readings and
- * dips (clock-skew wobble) are dropped, and a second machine reporting a level the
- * global tank already reached raises nothing, so per-member sample streams collapse
- * into one canonical trajectory. A recorded reset restarts the cap's envelope, so
- * the post-reset baseline sample is always kept. Stateful per sink (one group), so
- * `getLatestSamples()` (the stored envelope top) seeds it across (re)opens.
+ * the only thing attribution consumes. A sample is kept only when it raises the
+ * running max for its cap within the current window; flat readings and dips
+ * (clock-skew wobble) are dropped, so per-member streams collapse into one
+ * canonical trajectory. A recorded reset restarts the cap's envelope, keeping the
+ * post-reset baseline. Stateful per sink, seeded from `getLatestSamples()` across
+ * (re)opens.
  */
 class EnvelopeFilter {
   private envMax = new Map<CapKind, number>();
@@ -97,6 +80,12 @@ export interface StorageIngestSinkOptions {
    * recomputes without re-reading the window from storage.
    */
   window?: LedgerWindow;
+  /**
+   * The group's shared history finalizer. Inject the same instance the read path
+   * ticks so windows freeze from whichever side sees activity first; omitted, the
+   * sink builds a private one from `graceMs`/`finalizeIntervalMs`/`retentionMs`.
+   */
+  finalizer?: HistoryFinalizer;
 }
 
 /**
@@ -111,13 +100,9 @@ export class StorageIngestSink implements IngestSink {
   private lastPruneMs: number;
   private readonly retentionMs: number;
   private readonly pruneIntervalMs: number;
-  private readonly graceMs: number;
-  private readonly finalizeIntervalMs: number;
-  private lastFinalizeMs = 0;
-  /** `${cap} ${windowStart}` of windows already frozen — skip recompute. */
-  private readonly frozen = new Set<string>();
   private readonly now: () => number;
   private readonly window: LedgerWindow | undefined;
+  private readonly finalizer: HistoryFinalizer;
   private readonly envelope = new EnvelopeFilter();
 
   constructor(
@@ -126,10 +111,16 @@ export class StorageIngestSink implements IngestSink {
   ) {
     this.retentionMs = opts.retentionMs ?? RETENTION_MS;
     this.pruneIntervalMs = opts.pruneIntervalMs ?? DEFAULT_PRUNE_INTERVAL_MS;
-    this.graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
-    this.finalizeIntervalMs = opts.finalizeIntervalMs ?? DEFAULT_FINALIZE_INTERVAL_MS;
     this.now = opts.now ?? Date.now;
     this.window = opts.window;
+    this.finalizer =
+      opts.finalizer ??
+      new HistoryFinalizer(storage, {
+        graceMs: opts.graceMs,
+        finalizeIntervalMs: opts.finalizeIntervalMs,
+        retentionMs: opts.retentionMs,
+        now: opts.now,
+      });
     // Clock starts at construction, not the epoch: a sink is rebuilt on every
     // (re)open, and a 0 here would prune on the very first ingest — turning the
     // once-per-interval sweep into near-per-ingest work under tenant churn.
@@ -182,98 +173,12 @@ export class StorageIngestSink implements IngestSink {
     }
 
     const now = this.now();
-    await this.maybeFinalize(now);
+    await this.finalizer.maybeFinalize(now);
     if (now - this.lastPruneMs >= this.pruneIntervalMs) {
       this.lastPruneMs = now;
       const before = new Date(now - this.retentionMs).toISOString();
       await this.storage.prune(before);
       this.window?.applyPrune(before);
-    }
-  }
-
-  /**
-   * Freeze any window whose closing reset is now past the grace period into an
-   * immutable {@link HistoryWindow} + shares (ADR-0002/0008). Throttled (grace is 30
-   * min). A window spans two consecutive resets of the cap (the first opens at the
-   * earliest retained sample); shares come from the same `attributeShares` the live
-   * view uses. `recordHistoryWindow` is idempotent and `frozen` skips recompute.
-   */
-  private async maybeFinalize(now: number): Promise<void> {
-    if (now - this.lastFinalizeMs < this.finalizeIntervalMs) return;
-    this.lastFinalizeMs = now;
-    const since = new Date(now - this.retentionMs).toISOString();
-    const resets = await this.storage.getResetsSince(since);
-    if (resets.length === 0) return;
-
-    const capResets = new Map<CapKind, number[]>();
-    for (const r of resets) {
-      const t = Date.parse(r.at);
-      if (!Number.isFinite(t)) continue;
-      const arr = capResets.get(r.cap);
-      if (arr) arr.push(t);
-      else capResets.set(r.cap, [t]);
-    }
-
-    let samples: UsageSample[] | null = null;
-    let messages: MessageUsage[] | null = null;
-    let markers: UsageMarker[] | null = null;
-
-    for (const [cap, times] of capResets) {
-      times.sort((a, b) => a - b);
-      for (let i = 0; i < times.length; i++) {
-        const endMs = times[i]!;
-        if (endMs + this.graceMs > now) continue; // still amendable
-
-        // Load the trajectory/activity once, lazily, only when something freezes.
-        if (samples === null) {
-          [samples, messages, markers] = await Promise.all([
-            this.storage.getUsageSamplesSince(since),
-            this.storage.getMessageUsageSince(since),
-            this.storage.getUsageMarkersSince(since).catch(() => []),
-          ]);
-        }
-
-        const capSamples = samples.filter((s) => s.cap === cap);
-        // Window start = the previous reset, or the earliest retained sample.
-        const startMs =
-          i > 0
-            ? times[i - 1]!
-            : Math.min(...capSamples.map((s) => Date.parse(s.capturedAt)).filter(Number.isFinite));
-        if (!Number.isFinite(startMs) || startMs >= endMs) continue;
-        const windowStart = new Date(startMs).toISOString();
-        const key = `${cap} ${windowStart}`;
-        if (this.frozen.has(key)) continue;
-        const windowEnd = new Date(endMs).toISOString();
-
-        const inWin = (iso: string) => {
-          const t = Date.parse(iso);
-          return t >= startMs && t < endMs;
-        };
-        const winSamples = capSamples.filter((s) => inWin(s.capturedAt));
-        if (winSamples.length === 0) {
-          this.frozen.add(key);
-          continue;
-        }
-        const winMsgs = messages!.filter((m) => inWin(m.timestamp));
-        const winMarkers = markers!.filter((m) => inWin(m.at));
-        // Anchor attribution at the window end, bounded by its opening reset.
-        const openingReset = [{ cap, at: windowStart, previousPct: 0 }];
-        const shares = attributeShares(winSamples, winMsgs, endMs, openingReset, winMarkers).filter(
-          (sh) => sh.cap === cap
-        );
-        const overall = Math.max(...winSamples.map((s) => s.pct));
-        const historyShares: HistoryShare[] = shares.map((sh) => ({
-          cap,
-          windowStart,
-          user: sh.user,
-          pct: sh.pct,
-        }));
-        await this.storage.recordHistoryWindow(
-          { cap, windowStart, windowEnd, overall, closedAt: new Date(now).toISOString() },
-          historyShares
-        );
-        this.frozen.add(key);
-      }
     }
   }
 
@@ -310,18 +215,24 @@ export class StorageViewSource implements ViewSource {
       before: query.before,
       limit,
     });
-    const view: HistoryWindowView[] = await Promise.all(
-      windows.map(async (w) => ({
-        cap: w.cap,
-        windowStart: w.windowStart,
-        windowEnd: w.windowEnd,
-        overall: w.overall,
-        shares: (await this.storage.getHistoryShares(query.cap, w.windowStart)).map((s) => ({
-          user: s.user,
-          pct: s.pct,
-        })),
-      }))
+    // All the page's shares in ONE query (not one per window), grouped in memory.
+    const shares = await this.storage.getHistorySharesForWindows(
+      query.cap,
+      windows.map((w) => w.windowStart)
     );
+    const byWindow = new Map<string, { user: string; pct: number }[]>();
+    for (const s of shares) {
+      const arr = byWindow.get(s.windowStart);
+      if (arr) arr.push({ user: s.user, pct: s.pct });
+      else byWindow.set(s.windowStart, [{ user: s.user, pct: s.pct }]);
+    }
+    const view: HistoryWindowView[] = windows.map((w) => ({
+      cap: w.cap,
+      windowStart: w.windowStart,
+      windowEnd: w.windowEnd,
+      overall: w.overall,
+      shares: byWindow.get(w.windowStart) ?? [],
+    }));
     // A full page implies there may be more; hand back the oldest as the cursor.
     const nextBefore =
       windows.length === limit && windows.length > 0

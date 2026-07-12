@@ -119,6 +119,23 @@ export function runRegistryContract(h: RegistryContractHarness): void {
       expect(await db.registry.resolveToken("no-such-token")).toBeNull();
     });
 
+    it("sweeps stale tokens by cutoff, leaving fresh ones resolvable", async () => {
+      const db = await open();
+      const { member } = await db.registry.createGroupWithMember(input()); // mints token-hash-1
+      await db.registry.insertToken("token-hash-2", member.id);
+
+      // A cutoff in the past sweeps nothing — every token was just created.
+      expect(await db.registry.deleteStaleTokens("2000-01-01T00:00:00.000Z")).toBe(0);
+      expect(await db.registry.resolveToken("token-hash-1")).not.toBeNull();
+      expect(await db.registry.resolveToken("token-hash-2")).not.toBeNull();
+
+      // A far-future cutoff makes every token look abandoned — all are removed.
+      const removed = await db.registry.deleteStaleTokens("2999-01-01T00:00:00.000Z");
+      expect(removed).toBe(2);
+      expect(await db.registry.resolveToken("token-hash-1")).toBeNull();
+      expect(await db.registry.resolveToken("token-hash-2")).toBeNull();
+    });
+
     it("scopes members and rosters to their group within one Database", async () => {
       const db = await open();
       const a = (await db.registry.createGroupWithMember(input())).group;

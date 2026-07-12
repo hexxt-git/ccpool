@@ -1,4 +1,4 @@
-import type { GroupRow, IngestSink, StorageViewSource } from "@ccpool/core";
+import type { GroupRow, HistoryFinalizer, IngestSink, StorageViewSource } from "@ccpool/core";
 import type { LibsqlDatabase, LibsqlRegistry } from "@ccpool/storage-libsql";
 
 /**
@@ -16,6 +16,8 @@ export interface Tenant {
   sink: IngestSink;
   /** StorageViewSource concretely — its cache key doubles as the ETag. */
   view: StorageViewSource;
+  /** Shared with `sink`; the read routes tick it too (see {@link HistoryFinalizer}). */
+  finalizer: HistoryFinalizer;
 }
 
 export interface TenantProvider {

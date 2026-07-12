@@ -47,13 +47,10 @@ export class AlreadyRunningError extends Error {
 /**
  * Single-instance lock — the one guarantee that stops a fleet of daemons piling up.
  *
- * The pidfile is created with `openSync(…, "wx")`, i.e. `O_CREAT | O_EXCL`: the
- * kernel creates the file **only if it does not already exist, in one indivisible
- * step**. This is what makes duplicates impossible. The previous implementation
- * read the pid, checked liveness, then wrote — three separate steps, so two daemons
- * booting inside that window (tsx takes a second or two to start, and several TUIs /
- * dev servers each spawn one) both saw "no live owner" and both proceeded. With an
- * atomic create, exactly one racer wins the create; every other gets `EEXIST`, sees
+ * The pidfile is created with `openSync(…, "wx")` (`O_CREAT | O_EXCL`): the kernel
+ * creates it **only if it doesn't already exist, in one indivisible step**, so a
+ * read-check-write race can't let two daemons booting at once both see "no owner"
+ * and proceed. Exactly one racer wins the create; every other gets `EEXIST`, sees
  * the live owner, and refuses.
  *
  * A stale lock (owner crashed with SIGKILL, so `releaseLock` never ran, or a

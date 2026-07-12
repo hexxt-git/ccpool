@@ -25,11 +25,16 @@ import type {
  * on `(group_id, uuid)`, markers on `(group_id, id)`, so a retried tick can never
  * double-insert.
  *
+ * v2 — adds the immutable history tables `history_windows` (one frozen row per
+ * completed cap cycle, keyed `(group_id, cap, windowStart)`) and `history_shares`
+ * (its per-member split). Additive only: `migrate(2)` `CREATE … IF NOT EXISTS`es
+ * both and bumps the version, so an older ledger heals forward on tenant open.
+ *
  * When a future change needs one, bump this and add an additive, idempotent step
  * to each adapter's `migrate` (nullable columns / `CREATE … IF NOT EXISTS`), per
  * the migration rules in CLAUDE.md.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** The group a storage instance with no explicit group is scoped to. */
 export const DEFAULT_GROUP_ID = "default";
@@ -94,7 +99,7 @@ export interface Storage {
   /** Activity markers since `since` — fill rises with no measured activity (the "Attribution" section). */
   getUsageMarkersSince(since: string): Promise<UsageMarker[]>;
 
-  // history — immutable summaries of completed cap cycles (ADR-0002/0005)
+  // history — immutable summaries of completed cap cycles
 
   /**
    * Persist one frozen window and its per-member shares **atomically** and
@@ -108,7 +113,7 @@ export interface Storage {
    * Closed windows for one cap, **newest first** (`windowStart` DESC). `before`
    * is an exclusive cursor (return windows strictly older than it) for paging;
    * `limit` caps the page (adapter default when omitted). Backs `ccpool history`
-   * and the TUI matrix — retention is unbounded (Q6), so callers always page.
+   * and the TUI matrix — retention is unbounded, so callers always page.
    */
   getHistoryWindows(
     cap: CapKind,
@@ -117,6 +122,14 @@ export interface Storage {
 
   /** The per-member shares of one closed window (its expansion in the TUI). */
   getHistoryShares(cap: CapKind, windowStart: string): Promise<HistoryShare[]>;
+
+  /**
+   * The per-member shares for several windows of one cap in ONE query — what a
+   * history page uses to inline each window's shares without an N+1 (one round
+   * trip instead of one per window). An empty `windowStarts` returns `[]`; a
+   * window absent from the list is never returned. Callers group by `windowStart`.
+   */
+  getHistorySharesForWindows(cap: CapKind, windowStarts: string[]): Promise<HistoryShare[]>;
 }
 
 /** An empty batch — convenient default; recording it is a no-op for adapters. */

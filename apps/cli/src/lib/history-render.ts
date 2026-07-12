@@ -10,7 +10,7 @@ export const CAP_LABEL: Record<CapKind, string> = {
 /**
  * `ccpool history` as plain string lines: a `window | overall | <members>` matrix,
  * newest first. Member columns are the top-K by total share across the page (stable
- * ordering, ADR-0005); the rest collapse into a `+N` column. Plain text so it stays
+ * ordering); the rest collapse into a `+N` column. Plain text so it stays
  * clean piped or redirected. A member with no cell in a window shows `-`.
  */
 export function renderHistoryLines(

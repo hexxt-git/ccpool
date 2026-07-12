@@ -80,7 +80,8 @@ export type ApiErrorCode =
   | "not-found" // no group for this accountId (join/login)
   | "conflict" // group already exists / name taken with a different password
   | "invalid" // malformed body
-  | "rate-limited";
+  | "rate-limited"
+  | "server"; // an internal error on the server (500)
 
 export interface ApiError {
   error: string;

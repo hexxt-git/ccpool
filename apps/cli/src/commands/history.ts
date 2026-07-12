@@ -14,7 +14,7 @@ const CAP_ALIAS: Record<string, CapKind> = {
 
 /**
  * One-shot table of previous windows and who used each — the non-interactive
- * mirror of the TUI history mode (ADR-0005). Cold read over `GET /v1/history`.
+ * mirror of the TUI history mode. Cold read over `GET /v1/history`.
  */
 export async function runHistory(opts: { cap?: string; limit?: string }): Promise<void> {
   const ctx = await requireInit();

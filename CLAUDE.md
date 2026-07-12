@@ -70,6 +70,10 @@ Monorepo (pnpm workspaces + turbo). The meaningful packages:
   never opens a database.**
 - `apps/server` — the multi-tenant HTTP server (Hono; libSQL).
 - `apps/web` — unrelated Astro marketing site.
+- `apps/app` — a **static design mock** of the web dashboard (React/Vite, hardcoded
+  data). Ships nothing; it exists only to prototype the UI. `scratch/` is the same
+  kind of throwaway (a CLI design playground). Neither touches real state, and
+  neither is wired into the product — don't build features on them.
 
 ### Design system (frontend and web)
 
@@ -171,7 +175,10 @@ over a libSQL `:memory:` database. The server composes `LibsqlDatabase` in
 
 **Any new feature or conflict-guard that touches the DB — a new column, table, or
 `ccpool_meta` field — MUST ship as a numbered migration, never an ad-hoc schema
-edit.** (`SCHEMA_VERSION` is currently **1**.) (update this too) For each such change:
+edit.** `SCHEMA_VERSION` is currently **2** (v2 added the `history_windows` /
+`history_shares` tables; see the version log in
+`packages/core/src/storage/storage.ts`). **Bump this number and update it here every
+time.** For each such change:
 
 1. Bump `SCHEMA_VERSION` in `packages/core/src/storage/storage.ts` and document
    what the new version adds.
@@ -208,6 +215,34 @@ with no in-interval message _while this machine's user was driving Code moments 
 under-reports). Markers are a **strict fallback** — a real message in the interval always wins, so they can never dilute measured attribution.
 
 > Do not revert to apportioning the current tank by token weight — a single message would absorb 100% of the tank. `unknown` absorbs rises with no Code activity; columns always total the tank.
+
+### The envelope filter (ingest) and frozen history
+
+Two server-side subsystems sit on the storage-backed backend pieces
+(`packages/core/src/backend/`):
+
+- **`EnvelopeFilter`** (in `backend/storage.ts`, one per `StorageIngestSink`) reduces
+  each tick's raw samples to the **monotonic usage envelope** before anything is
+  persisted: a sample is kept only when it raises the running max for its cap in the
+  current window (a reset restarts the envelope, keeping the post-reset baseline).
+  Flat/dip readings and a second machine reporting a level the tank already reached
+  collapse to nothing, so a no-op tick writes nothing and bumps no change token. The
+  daemon does the mirror of this client-side (report-on-change), so the two together
+  keep the steady-state request/write rate near zero. Seeded from
+  `getLatestSamples()` across sink (re)opens.
+- **Frozen history** (`HistoryFinalizer` in `backend/finalizer.ts`): a completed cap
+  cycle — the span between two consecutive resets — freezes into an immutable
+  `history_windows` row plus its per-member `history_shares` (same `attributeShares`
+  the live view uses), 30 min after its closing reset (the grace window, during which
+  late idempotent re-sends still amend it). The finalizer is **shared per tenant**
+  between the ingest sink (write path) and the `/v1/view` + `/v1/history` routes (read
+  path) and ticked from both, so a group that goes quiet right after a reset still
+  freezes its last window the next time anyone looks at it — not only on its next
+  ingest. `recordHistoryWindow` is idempotent and a `frozen` set skips recompute, so
+  ticking from two sides is safe. History retention is unbounded; reads page
+  newest-first over `getHistoryWindows`, and a page inlines all its shares with **one**
+  `getHistorySharesForWindows` query (no N+1). History is a cold path — never on the
+  2s refresh.
 
 ## Invariants to preserve
 
@@ -253,4 +288,17 @@ under-reports). Markers are a **strict fallback** — a real message in the inte
 - **Secrets stay out of config.json.** The 0600 `~/.ccpool/token` file holds the
   server bearer; the server stores only sha256 hashes of bearers and self-describing
   scrypt hashes of passwords. The CLI refuses plain-http server URLs except
-  localhost.
+  localhost. Bearers are retained, not immortal: the server sweeps tokens untouched
+  for 90 days (`deleteStaleTokens`, throttled on the authed path) so the `tokens`
+  table stays bounded; a live daemon touches its token ~1/min, so an active session
+  is never swept.
+- **The server is single-process per database.** A pile of per-process in-memory
+  state assumes exactly one server instance owns the DB: each tenant's `LedgerWindow`
+  mirror and `EnvelopeFilter`, the `HistoryFinalizer`'s `frozen` set, the
+  token→identity cache, the `lastTouch`/sweep bookkeeping, and the `FailureDamper`.
+  Run two instances against one Turso database and instance A never sees instance B's
+  writes in its mirror (yet A's change token still moves, so it recomputes over a
+  mirror missing rows and serves **silently wrong** attribution — nothing self-heals
+  it). Scaling out means either sharding groups to instances or replacing these
+  mirrors with a shared cache; until then, **one process.** TLS/one instance
+  terminates in front (the CLI refuses plain http for non-localhost).

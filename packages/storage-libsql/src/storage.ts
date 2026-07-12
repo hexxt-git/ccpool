@@ -1,4 +1,4 @@
-import type { Client, InStatement, InValue } from "@libsql/client";
+import type { Client, InStatement, InValue, Row } from "@libsql/client";
 import { randomUUID } from "node:crypto";
 import {
   CAP_KINDS,
@@ -351,12 +351,18 @@ export class LibsqlStorage implements Storage {
             WHERE group_id = ? AND cap = ? AND windowStart = ?`,
       args: [this.groupId, cap, windowStart],
     });
-    return rows.map((r) => ({
-      cap: r.cap as CapKind,
-      windowStart: String(r.windowStart),
-      user: String(r.user),
-      pct: Number(r.pct),
-    }));
+    return rows.map(toHistoryShare);
+  }
+
+  async getHistorySharesForWindows(cap: CapKind, windowStarts: string[]): Promise<HistoryShare[]> {
+    if (windowStarts.length === 0) return [];
+    const placeholders = windowStarts.map(() => "?").join(", ");
+    const { rows } = await this.client.execute({
+      sql: `SELECT cap, windowStart, user, pct FROM history_shares
+            WHERE group_id = ? AND cap = ? AND windowStart IN (${placeholders})`,
+      args: [this.groupId, cap, ...windowStarts],
+    });
+    return rows.map(toHistoryShare);
   }
 
   /** Every write batch ends with this so one tick bumps this group's token once. */
@@ -366,4 +372,13 @@ export class LibsqlStorage implements Storage {
       args: [this.groupId],
     };
   }
+}
+
+function toHistoryShare(r: Row): HistoryShare {
+  return {
+    cap: r.cap as CapKind,
+    windowStart: String(r.windowStart),
+    user: String(r.user),
+    pct: Number(r.pct),
+  };
 }

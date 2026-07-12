@@ -1,4 +1,4 @@
-import { LedgerWindow, StorageIngestSink, StorageViewSource } from "@ccpool/core";
+import { HistoryFinalizer, LedgerWindow, StorageIngestSink, StorageViewSource } from "@ccpool/core";
 import type { LibsqlDatabase } from "@ccpool/storage-libsql";
 import type { GroupRow, Tenant, TenantProvider } from "./deps.js";
 
@@ -60,10 +60,13 @@ export class TenantCache implements TenantProvider {
     // source: hydrated from storage once, appended by ingest ever after — the
     // steady-state view recompute reads no ledger rows from the database.
     const window = new LedgerWindow(storage);
+    // One history finalizer per live tenant, shared by its sink and read routes.
+    const finalizer = new HistoryFinalizer(storage);
     const entry: TenantEntry = {
       tenant: {
-        sink: new StorageIngestSink(storage, { window }),
+        sink: new StorageIngestSink(storage, { window, finalizer }),
         view: new StorageViewSource(storage, { window }),
+        finalizer,
       },
     };
     this.tenants.set(group.id, entry);

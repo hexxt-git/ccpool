@@ -100,10 +100,10 @@ export interface UserShare {
 }
 
 /**
- * An immutable summary of one **completed cap cycle** — the history unit (ADR-0002).
+ * An immutable summary of one **completed cap cycle** — the history unit.
  * Its bounds plus how full the tank got (`overall`, the envelope top at close). The
  * per-member split lives in {@link HistoryShare} rows keyed by the same
- * `(cap, windowStart)`. Frozen after the 30-min grace; retained unbounded (ADR-0005).
+ * `(cap, windowStart)`. Frozen after the 30-min grace; retained unbounded.
  */
 export interface HistoryWindow {
   cap: CapKind;
@@ -114,7 +114,7 @@ export interface HistoryWindow {
 }
 
 /**
- * One member's final share of a completed window (ADR-0002/0005). Rows for a given
+ * One member's final share of a completed window. Rows for a given
  * `(cap, windowStart)` sum to that window's `overall`; `unknown` is a normal row.
  * These back `ccpool history` and the TUI history matrix.
  */
@@ -134,7 +134,7 @@ export interface HistoryWindowView {
   shares: { user: string; pct: number }[]; // sum to `overall`; includes `unknown`
 }
 
-/** A cursor-paged page of history windows, newest first (ADR-0005). */
+/** A cursor-paged page of history windows, newest first. */
 export interface HistoryPage {
   windows: HistoryWindowView[];
   /** Pass as `before` to fetch the next older page; null when there are no more. */

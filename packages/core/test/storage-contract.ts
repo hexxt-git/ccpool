@@ -387,6 +387,55 @@ export function runStorageContract(h: ContractHarness): void {
       expect(shares.map((x) => x.user).sort()).toEqual(["alice", "bob"]);
       expect(shares.reduce((n, x) => n + x.pct, 0)).toBe(80);
     });
+
+    it("fetches shares for several windows in one call (the N+1-free history page)", async () => {
+      const s = await open(h.fresh());
+      await s.initializeSchema();
+      const win = (start: string) => ({
+        cap: "five_hour" as const,
+        windowStart: start,
+        windowEnd: start,
+        overall: 100,
+        closedAt: start,
+      });
+      await s.recordHistoryWindow(win("2026-06-29T00:00:00.000Z"), [
+        { cap: "five_hour", windowStart: "2026-06-29T00:00:00.000Z", user: "alice", pct: 50 },
+        { cap: "five_hour", windowStart: "2026-06-29T00:00:00.000Z", user: "bob", pct: 30 },
+      ]);
+      await s.recordHistoryWindow(win("2026-06-29T05:00:00.000Z"), [
+        { cap: "five_hour", windowStart: "2026-06-29T05:00:00.000Z", user: "alice", pct: 60 },
+      ]);
+      // A share under a DIFFERENT cap at the same windowStart must not bleed in.
+      await s.recordHistoryWindow(
+        {
+          cap: "seven_day",
+          windowStart: "2026-06-29T00:00:00.000Z",
+          windowEnd: "2026-07-06T00:00:00.000Z",
+          overall: 40,
+          closedAt: "2026-07-06T00:00:00.000Z",
+        },
+        [{ cap: "seven_day", windowStart: "2026-06-29T00:00:00.000Z", user: "carol", pct: 40 }]
+      );
+
+      // Empty input short-circuits to [] (no query, no accidental full scan).
+      expect(await s.getHistorySharesForWindows("five_hour", [])).toEqual([]);
+
+      const all = await s.getHistorySharesForWindows("five_hour", [
+        "2026-06-29T00:00:00.000Z",
+        "2026-06-29T05:00:00.000Z",
+        "2026-06-29T99:00:00.000Z", // absent — contributes nothing
+      ]);
+      // Every returned row is five_hour and belongs to a requested window.
+      expect(all.every((x) => x.cap === "five_hour")).toBe(true);
+      const byWindow = new Map<string, string[]>();
+      for (const x of all) {
+        byWindow.set(x.windowStart, [...(byWindow.get(x.windowStart) ?? []), x.user].sort());
+      }
+      expect(byWindow.get("2026-06-29T00:00:00.000Z")).toEqual(["alice", "bob"]);
+      expect(byWindow.get("2026-06-29T05:00:00.000Z")).toEqual(["alice"]);
+      // The batched result matches per-window fetches summed together.
+      expect(all).toHaveLength(3);
+    });
   });
 }
 

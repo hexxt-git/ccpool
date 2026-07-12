@@ -39,6 +39,8 @@ export type { ViewSource } from "./backend/view-source.js";
 export { StorageIngestSink, StorageViewSource } from "./backend/storage.js";
 export type { StorageIngestSinkOptions } from "./backend/storage.js";
 export { LedgerWindow } from "./backend/window.js";
+export { HistoryFinalizer } from "./backend/finalizer.js";
+export type { HistoryFinalizerOptions } from "./backend/finalizer.js";
 
 // identity
 export { resolveConfigDir, projectsDir, globalConfigPath } from "./identity/paths.js";
