@@ -122,6 +122,32 @@ describe("detectPackageManager", () => {
     ).toBe("npm");
   });
 
+  it("skips local (non-global) dependency layouts we must not `-g` upgrade", () => {
+    // A plain <project>/node_modules/ccpool is a local dep, not a global install.
+    expect(
+      detectPackageManager(fakeEntry(["myapp", "node_modules", "ccpool", "dist", "cli.js"]))
+    ).toBeNull();
+    // A project's local pnpm virtual store must not read as a global pnpm install.
+    expect(
+      detectPackageManager(
+        fakeEntry([
+          "myapp",
+          "node_modules",
+          ".pnpm",
+          "ccpool@1.0.0",
+          "node_modules",
+          "ccpool",
+          "dist",
+          "cli.js",
+        ])
+      )
+    ).toBeNull();
+    // Yarn Berry keeps a project-local .yarn/ dir — not a global install either.
+    expect(
+      detectPackageManager(fakeEntry(["myapp", ".yarn", "unplugged", "ccpool", "dist", "cli.js"]))
+    ).toBeNull();
+  });
+
   it("follows symlinks to the real package tree", () => {
     const real = fakeEntry([
       ".local",

@@ -135,17 +135,23 @@ export function detectPackageManager(
   if (p.includes("/_npx/") || p.includes("/.npm/_npx/")) return null;
   if (p.includes("/.bun/install/cache/")) return null;
 
-  // Path markers (most specific first).
-  if (p.includes("/.bun/") || p.includes("/bun/install/global/")) return "bun";
-  if (p.includes("/.pnpm/") || p.includes("/pnpm/global/") || p.includes("/pnpm-global/"))
-    return "pnpm";
-  if (p.includes("/.yarn/") || p.includes("/yarn/global/")) return "yarn";
+  // Global-install path markers (most specific first). These deliberately match
+  // only *global* layouts — a bare <project>/node_modules/ccpool (or a local
+  // pnpm/yarn virtual store) is a local dependency we must never rewrite with a
+  // `-g` upgrade.
+  if (p.includes("/.bun/install/global/") || p.includes("/bun/install/global/")) return "bun";
+  if (p.includes("/pnpm/global/") || p.includes("/pnpm-global/")) return "pnpm";
+  if (p.includes("/.yarn/global/") || p.includes("/yarn/global/")) return "yarn";
 
-  // Classic global install under node_modules/ccpool (npm, and some yarn layouts).
+  // Classic npm global lives under <prefix>/lib/node_modules (POSIX) or
+  // <prefix>/npm/node_modules (Windows). A plain <project>/node_modules/ccpool
+  // matches neither, so it stays unmanaged.
   if (/\/node_modules\/ccpool(\/|$)/.test(p)) {
     // Prefer yarn when the tree clearly lives under a yarn global prefix.
     if (p.includes("/yarn/")) return "yarn";
-    return "npm";
+    if (p.includes("/lib/node_modules/ccpool") || p.includes("/npm/node_modules/ccpool"))
+      return "npm";
+    return null;
   }
 
   return null;

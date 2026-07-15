@@ -31,11 +31,19 @@ program
   .version(CLI_VERSION);
 
 // Background auto-update: detect npm/pnpm/yarn/bun install, pull latest when
-// newer. Fire-and-forget so the command (incl. a long-lived TUI) is never blocked;
-// failures surface on the TUI error line via module state. Skip statusline — it
-// is invoked very frequently by Claude Code's status bar.
-const isStatusline = process.argv.includes("statusline");
-if (!isStatusline) {
+// newer. Only fire for the long-lived commands — the interactive TUI (bare
+// `ccpool` / `tui` / `live`) and the foreground daemon (`daemon run`) — where the
+// process stays alive long enough to finish an install and (in the TUI) surface
+// failures on the error line. One-shot commands exit via `process.exitCode` and
+// would otherwise block on the registry round-trip or the ~2-minute install; the
+// hot statusline must stay cheap too.
+const args = process.argv.slice(2);
+const isLongLived =
+  args.length === 0 || // bare `ccpool` opens the TUI
+  args[0] === "tui" ||
+  args[0] === "live" ||
+  (args[0] === "daemon" && args[1] === "run");
+if (isLongLived) {
   startAutoUpdate({ currentVersion: CLI_VERSION });
 }
 
