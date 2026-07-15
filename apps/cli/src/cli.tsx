@@ -16,17 +16,36 @@ import {
   runDaemonStatus,
   runDaemonStop,
 } from "./commands/daemon.js";
+import { startAutoUpdate } from "./lib/update.js";
 
 const program = new Command();
 
 // Injected at build time by tsup from package.json (see tsup.config.ts); the
 // `typeof` guard keeps `tsx` dev runs (where it isn't defined) working.
 declare const __CLI_VERSION__: string;
+const CLI_VERSION = typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.0-dev";
 
 program
   .name("ccpool")
   .description("a shared, live picture of one Claude account's usage and who's using it")
-  .version(typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.0-dev");
+  .version(CLI_VERSION);
+
+// Background auto-update: detect npm/pnpm/yarn/bun install, pull latest when
+// newer. Only fire for the long-lived commands — the interactive TUI (bare
+// `ccpool` / `tui` / `live`) and the foreground daemon (`daemon run`) — where the
+// process stays alive long enough to finish an install and (in the TUI) surface
+// failures on the error line. One-shot commands exit via `process.exitCode` and
+// would otherwise block on the registry round-trip or the ~2-minute install; the
+// hot statusline must stay cheap too.
+const args = process.argv.slice(2);
+const isLongLived =
+  args.length === 0 || // bare `ccpool` opens the TUI
+  args[0] === "tui" ||
+  args[0] === "live" ||
+  (args[0] === "daemon" && args[1] === "run");
+if (isLongLived) {
+  startAutoUpdate({ currentVersion: CLI_VERSION });
+}
 
 // Bare `ccpool` opens the TUI: onboarding when unconfigured, the live view
 // otherwise (press `c` there to configure). The subcommands below remain as a

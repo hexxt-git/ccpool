@@ -4,6 +4,7 @@ import { CAP_KINDS, type Config, type ViewSource } from "@ccpool/core";
 import { gatherView, type LastRoster } from "../lib/view.js";
 import { toDesignModel, type DesignModel } from "../lib/design-model.js";
 import { loadConfig } from "../lib/config.js";
+import { subscribeUpdate, updateErrorMessage } from "../lib/update.js";
 import { DESIGNS } from "./designs/index.js";
 import { renderHistory, type HistoryState } from "./history.js";
 import { P } from "./designs/palette.js";
@@ -53,6 +54,9 @@ export function App({
   const [model, setModel] = useState<DesignModel | null>(null);
   const [, setTick] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  // Auto-update failures (install/check) — separate from view-poll errors so a
+  // successful refresh doesn't clear a still-relevant update problem.
+  const [updateErr, setUpdateErr] = useState<string | null>(() => updateErrorMessage());
   const [idx, setIdx] = useState(0);
   const [scroll, setScroll] = useState(0);
   const [msg, setMsg] = useState(0);
@@ -128,6 +132,14 @@ export function App({
     };
   }, [refresh, pollIntervalMs]);
 
+  // Background auto-update (started from cli.tsx) publishes failures here so they
+  // stick on the error line while the TUI keeps running.
+  useEffect(() => {
+    return subscribeUpdate((s) => {
+      setUpdateErr(updateErrorMessage(s));
+    });
+  }, []);
+
   const innerCols = cols - 2;
   const n = DESIGNS.length;
 
@@ -136,7 +148,9 @@ export function App({
   const shortcutsText =
     mode === "history" ? SHORTCUTS_HISTORY : onConfigure ? SHORTCUTS_CONFIG : SHORTCUTS;
   const wide = innerCols >= current.label.length + shortcutsText.length + 4;
-  const footerH = wide ? 1 : 2;
+  // Prefer the live view error; fall back to an auto-update failure.
+  const errorLine = err ?? updateErr;
+  const footerH = (wide ? 1 : 2) + (errorLine ? 1 : 0);
   // Leave the last terminal row unused so output stays strictly shorter than the
   // terminal. At full height Ink clears the whole screen every frame (outputHeight
   // >= stdout.rows), which flickers; one row of slack keeps the incremental path.
@@ -221,7 +235,7 @@ export function App({
           <Text color={P.dim}>loading…</Text>
         </Box>
       )}
-      {err ? <Text color={P.red}>error: {err}</Text> : null}
+      {errorLine ? <Text color={P.red}>error: {errorLine}</Text> : null}
       {wide ? (
         <Box justifyContent="space-between">
           {message}
