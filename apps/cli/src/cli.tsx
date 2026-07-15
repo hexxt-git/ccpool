@@ -16,17 +16,28 @@ import {
   runDaemonStatus,
   runDaemonStop,
 } from "./commands/daemon.js";
+import { startAutoUpdate } from "./lib/update.js";
 
 const program = new Command();
 
 // Injected at build time by tsup from package.json (see tsup.config.ts); the
 // `typeof` guard keeps `tsx` dev runs (where it isn't defined) working.
 declare const __CLI_VERSION__: string;
+const CLI_VERSION = typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.0-dev";
 
 program
   .name("ccpool")
   .description("a shared, live picture of one Claude account's usage and who's using it")
-  .version(typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.0-dev");
+  .version(CLI_VERSION);
+
+// Background auto-update: detect npm/pnpm/yarn/bun install, pull latest when
+// newer. Fire-and-forget so the command (incl. a long-lived TUI) is never blocked;
+// failures surface on the TUI error line via module state. Skip statusline — it
+// is invoked very frequently by Claude Code's status bar.
+const isStatusline = process.argv.includes("statusline");
+if (!isStatusline) {
+  startAutoUpdate({ currentVersion: CLI_VERSION });
+}
 
 // Bare `ccpool` opens the TUI: onboarding when unconfigured, the live view
 // otherwise (press `c` there to configure). The subcommands below remain as a
