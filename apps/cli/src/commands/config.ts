@@ -125,7 +125,7 @@ export async function runConfigSet(key: string, value: string): Promise<void> {
   console.log(`Set ${key} = ${value}`);
 
   // The new bearer only reaches a live daemon by restarting it (see above).
-  if (sharedIdentityChanged && isDaemonRunning(cfg)) {
+  if (sharedIdentityChanged && isDaemonRunning()) {
     await runDaemonRestart();
   }
 }

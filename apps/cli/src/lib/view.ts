@@ -14,8 +14,8 @@ import {
   type UserShare,
   type ViewSource,
 } from "@ccpool/core";
-import { daemonPaths, isAlive, readPid } from "@ccpool/daemon";
-import { ccpoolDir } from "./config.js";
+import { isAlive, readPid } from "@ccpool/daemon";
+import { daemonControlPaths, stateFilePath } from "./config.js";
 
 /** Where the numbers on screen came from. */
 export type ViewOrigin = "db" | "state" | "live" | "none";
@@ -94,9 +94,10 @@ export async function gatherView(
   prev?: LastRoster | null
 ): Promise<ViewModel> {
   const configDir = configDirOf(cfg);
-  const { stateFile, pidFile } = daemonPaths(ccpoolDir(), configDir);
+  const { pidFile } = daemonControlPaths();
+  const stateFile = cfg.accountId ? stateFilePath(cfg.accountId) : null;
 
-  const state = readState(stateFile);
+  const state = stateFile ? readState(stateFile) : null;
   const pid = readPid(pidFile);
   const daemonRunning = pid !== null && isAlive(pid);
 

@@ -207,6 +207,13 @@ export interface Config {
   server: { url: string; token?: string };
   /** Active user; alphanumeric + hyphens. Changeable with `config set name`. */
   name: string;
+  /**
+   * The Claude `accountUuid` this profile belongs to. One machine keeps a profile
+   * per account under `~/.ccpool/accounts/<accountId>/`; the *live* Claude account
+   * (whatever `resolveAccount` reports) selects which one is active. Optional only
+   * to stay backward-compatible with pre-multi-account single-profile configs.
+   */
+  accountId?: string;
   pollIntervalMs: number;
   configDirs: string[];
   logLevel: "debug" | "info" | "warn" | "error";

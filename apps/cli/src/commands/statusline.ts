@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { CAP_LABEL, pctLabel, type LocalState } from "@ccpool/core";
-import { daemonPaths, isAlive, readPid } from "@ccpool/daemon";
-import { ccpoolDir, loadConfig } from "../lib/config.js";
+import { isAlive, readPid } from "@ccpool/daemon";
+import { daemonControlPaths, loadConfig, stateFilePath } from "../lib/config.js";
 
 /**
  * Compact one-liner for Claude Code's status bar. Reads `state.json` only — cheap,
@@ -14,10 +14,10 @@ export async function runStatusline(): Promise<void> {
     process.stdout.write("ccpool: run `ccpool init`\n");
     return;
   }
-  const configDir = cfg.configDirs[0] ?? process.cwd();
-  const { stateFile, pidFile } = daemonPaths(ccpoolDir(), configDir);
+  const { pidFile } = daemonControlPaths();
+  const stateFile = cfg.accountId ? stateFilePath(cfg.accountId) : null;
 
-  if (!existsSync(stateFile)) {
+  if (!stateFile || !existsSync(stateFile)) {
     process.stdout.write(`ccpool · you ${cfg.name} · ○ no data\n`);
     return;
   }

@@ -153,6 +153,7 @@ export async function applySharedJoin(opts: {
     serverUrl,
     token: auth.token,
     name: auth.memberName,
+    accountId: acct.id,
     configDirs: [configDir],
   });
   await saveConfig(config);

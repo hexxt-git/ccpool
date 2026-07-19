@@ -13,18 +13,20 @@ import {
   type TickBatch,
 } from "@ccpool/core";
 import { LibsqlDatabase } from "@ccpool/storage-libsql";
-import { Daemon, type DaemonDeps } from "../src/daemon.js";
+import { Daemon } from "../src/daemon.js";
+import { Pipeline, type PipelineDeps } from "../src/pipeline.js";
 import { acquireLock, AlreadyRunningError, daemonPaths, reassertLock } from "../src/lifecycle.js";
 import { existsSync, unlinkSync } from "node:fs";
 
 const NOW = Date.parse("2026-06-29T20:00:00.000Z");
+const SILENT = { debug() {}, info() {}, warn() {}, error() {} };
 
 // Each setup() opens its own libSQL `:memory:` database (per-client isolation);
 // afterEach closes them all so no client leaks and hangs vitest.
 const openDbs: LibsqlDatabase[] = [];
 
 interface Harness {
-  deps: DaemonDeps;
+  deps: PipelineDeps;
   storage: Storage;
   sink: StorageIngestSink;
   stateFile: string;
@@ -81,11 +83,11 @@ async function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Promise
     },
     fetchCalls: () => fetchMock.mock.calls.length,
     deps: {
+      accountId: "acc-1",
       sink,
-      paths,
+      stateFile: paths.stateFile,
       configDir,
       name: "sam",
-      pollIntervalMs: 60_000,
       now,
       fetchImpl: fetchMock as unknown as typeof fetch,
       // Read only the test's plaintext file — never fall through to the host's
@@ -93,7 +95,7 @@ async function setup(initialBody: unknown, expiresAt = NOW + 3_600_000): Promise
       // expired token and make the poll-skip cases flaky on darwin.
       readCredentials: (dir, opts) =>
         coreReadCredentials(dir, { ...opts, readKeychain: async () => [] }),
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger: SILENT,
     },
   };
 }
@@ -106,18 +108,13 @@ afterEach(async () => {
   await Promise.all(openDbs.splice(0).map((db) => db.close().catch(() => {})));
 });
 
-/** Reach the private startup step (sink bootstrap: binding + reset seed). */
-async function bootstrap(daemon: Daemon): Promise<void> {
-  await (daemon as unknown as { bootstrap(): Promise<void> }).bootstrap();
-}
-
-describe("Daemon.tick", () => {
+describe("Pipeline.tick", () => {
   it("polls, records samples, and writes state.json atomically", async () => {
     const h = await setup({
       five_hour: { utilization: 42, resets_at: "2026-06-29T22:00:00Z" },
       seven_day: { utilization: 68, resets_at: "2026-07-05T22:00:00Z" },
     });
-    await new Daemon(h.deps).tick();
+    await new Pipeline(h.deps).tick();
 
     expect((await h.storage.getLatestSamples()).find((s) => s.cap === "five_hour")?.pct).toBe(42);
     const state = readState(h.stateFile);
@@ -143,8 +140,8 @@ describe("Daemon.tick", () => {
       },
       close: async () => {},
     };
-    const daemon = new Daemon({ ...h.deps, sink: rejectingSink });
-    await daemon.tick();
+    const pipeline = new Pipeline({ ...h.deps, sink: rejectingSink });
+    await pipeline.tick();
 
     const state = readState(h.stateFile);
     expect(state.account.authRejected).toBe(true);
@@ -163,10 +160,10 @@ describe("Daemon.tick", () => {
             status: 200,
           })
     );
-    const daemon = new Daemon({ ...h.deps, fetchImpl: fetchImpl as unknown as typeof fetch });
+    const pipeline = new Pipeline({ ...h.deps, fetchImpl: fetchImpl as unknown as typeof fetch });
 
     // Clean tick: poll + ingest both land, so the heartbeat is stamped at NOW.
-    await daemon.tick();
+    await pipeline.tick();
     const firstSync = readState(h.stateFile).lastSyncAt;
     expect(firstSync).toBe(new Date(NOW).toISOString());
 
@@ -174,7 +171,7 @@ describe("Daemon.tick", () => {
     // advance — even though state.json is rewritten with a fresh `updatedAt`.
     fail = true;
     h.advance(60_000);
-    await daemon.tick();
+    await pipeline.tick();
 
     const state = readState(h.stateFile);
     expect(state.lastSyncAt).toBe(firstSync);
@@ -183,17 +180,17 @@ describe("Daemon.tick", () => {
 
   it("records a reset when pct drops across ticks", async () => {
     const h = await setup({ five_hour: { utilization: 90, resets_at: null } });
-    const daemon = new Daemon(h.deps);
-    await daemon.tick(); // 90%
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.tick(); // 90%
     h.setBody({ five_hour: { utilization: 3, resets_at: null } });
-    await daemon.tick(); // 3% -> reset
+    await pipeline.tick(); // 3% -> reset
     const resets = await h.storage.getResetsSince(new Date(0).toISOString());
     expect(resets).toEqual([expect.objectContaining({ cap: "five_hour", previousPct: 90 })]);
   });
 
   it("skips the poll and flags expiry when the token is expired", async () => {
     const h = await setup({ five_hour: { utilization: 1, resets_at: null } }, NOW - 1);
-    await new Daemon(h.deps).tick();
+    await new Pipeline(h.deps).tick();
     expect(h.fetchCalls()).toBe(0);
     expect(readState(h.stateFile).account.tokenExpired).toBe(true);
   });
@@ -201,23 +198,23 @@ describe("Daemon.tick", () => {
   it("sends ONE batch per tick (samples + messages together)", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     const spy = vi.spyOn(h.storage, "recordBatch");
-    await new Daemon(h.deps).tick();
+    await new Pipeline(h.deps).tick();
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("does not re-send an unchanged tank, but a rise still ingests (report-on-change)", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
-    const daemon = new Daemon(h.deps);
-    await daemon.tick(); // first reading: 42 is sent
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.tick(); // first reading: 42 is sent
 
     h.advance(60_000);
     const spy = vi.spyOn(h.storage, "recordBatch");
-    await daemon.tick(); // still 42 — nothing new to send
+    await pipeline.tick(); // still 42 — nothing new to send
     expect(spy).not.toHaveBeenCalled();
 
     h.setBody({ five_hour: { utilization: 55, resets_at: null } });
     h.advance(60_000);
-    await daemon.tick(); // a rise — sent
+    await pipeline.tick(); // a rise — sent
     expect(spy).toHaveBeenCalledTimes(1);
 
     const samples = await h.storage.getUsageSamplesSince(new Date(0).toISOString());
@@ -238,40 +235,44 @@ describe("Daemon.tick", () => {
       },
       close: () => h.sink.close(),
     };
-    const daemon = new Daemon({ ...h.deps, sink: flaky });
+    const pipeline = new Pipeline({ ...h.deps, sink: flaky });
 
-    const { pollFailed } = await daemon.tick(); // ingest fails -> batch retained
+    const { pollFailed } = await pipeline.tick(); // ingest fails -> batch retained
     expect(pollFailed).toBe(true);
     expect(await h.storage.getLatestSamples()).toHaveLength(0);
 
     h.setBody({ five_hour: { utilization: 43, resets_at: null } });
     h.advance(60_000); // next tick observes a later instant (distinct capturedAt)
-    await daemon.tick(); // retried batch merges with this tick's
+    await pipeline.tick(); // retried batch merges with this tick's
     const samples = await h.storage.getUsageSamplesSince(new Date(0).toISOString());
     expect(samples.map((s) => s.pct)).toEqual([42, 43]); // both ticks landed
   });
 });
 
-describe("Daemon schema auto-migration", () => {
+describe("Pipeline schema auto-migration", () => {
   // v1 is the single baseline, so a freshly initialized DB is already current and
-  // the daemon must never migrate it. (The forward-migration machinery is retained
+  // the pipeline must never migrate it. (The forward-migration machinery is retained
   // for future versions; there are no historical steps to exercise.)
   it("does not migrate a current DB", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-1");
     const spy = vi.spyOn(h.storage, "migrate");
-    await bootstrap(new Daemon(h.deps));
+    await new Pipeline(h.deps).bootstrap();
     expect(spy).not.toHaveBeenCalled();
   });
 });
 
-describe("Daemon account-conflict guard", () => {
-  it("halts ledger writes when the local account differs from the DB's binding", async () => {
+// A per-account profile's group is bound to that same account, so a mismatch
+// shouldn't happen in practice — but the pipeline stays defensive: if the sink's
+// group is bound to a *different* account (a stray server-side 409), it never
+// writes into that foreign tank and flags the conflict in state.json.
+describe("Pipeline account-conflict guard (server-side 409)", () => {
+  it("does not record anything when the sink refuses the write (bound to another account)", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER"); // ledger bound to a different account
-    const daemon = new Daemon(h.deps); // local account is acc-1 (from .claude.json)
-    await bootstrap(daemon);
-    await daemon.tick();
+    const pipeline = new Pipeline(h.deps); // this pipeline is acc-1
+    await pipeline.bootstrap();
+    await pipeline.tick();
 
     expect(h.fetchCalls()).toBe(1); // still polls (local view)
     expect(await h.storage.getLatestSamples()).toHaveLength(0); // but records nothing
@@ -280,34 +281,22 @@ describe("Daemon account-conflict guard", () => {
     expect(state.samples.map((s) => s.cap)).toEqual(["five_hour"]); // local state still shown
   });
 
-  it("does not ingest anything during a conflict", async () => {
+  it("does not call recordBatch during a conflict", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema("acc-OTHER");
     const spy = vi.spyOn(h.storage, "recordBatch");
-    const daemon = new Daemon(h.deps);
-    await bootstrap(daemon);
-    await daemon.tick();
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.bootstrap();
+    await pipeline.tick();
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("flags the conflict when the sink itself refuses the write (server-side 409)", async () => {
+  it("writes normally when the binding matches the pipeline's account", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
-    await h.storage.initializeSchema("acc-OTHER");
-    const daemon = new Daemon(h.deps);
-    // The daemon never learns the binding — only the sink does (like a server 409).
-    await h.sink.bootstrap();
-    await daemon.tick();
-
-    expect(await h.storage.getLatestSamples()).toHaveLength(0);
-    expect(readState(h.stateFile).account.conflict).toBe(true);
-  });
-
-  it("writes normally when the local account matches the binding", async () => {
-    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
-    await h.storage.initializeSchema("acc-1"); // matches .claude.json
-    const daemon = new Daemon(h.deps);
-    await bootstrap(daemon);
-    await daemon.tick();
+    await h.storage.initializeSchema("acc-1"); // matches the pipeline's account
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.bootstrap();
+    await pipeline.tick();
 
     expect(await h.storage.getLatestSamples()).toHaveLength(1);
     expect(readState(h.stateFile).account.conflict).toBe(false);
@@ -316,16 +305,16 @@ describe("Daemon account-conflict guard", () => {
   it("does not enforce against an unbound ledger", async () => {
     const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
     await h.storage.initializeSchema(); // unbound (accountId null)
-    const daemon = new Daemon(h.deps);
-    await bootstrap(daemon);
-    await daemon.tick();
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.bootstrap();
+    await pipeline.tick();
 
     expect(await h.storage.getLatestSamples()).toHaveLength(1);
     expect(readState(h.stateFile).account.conflict).toBe(false);
   });
 });
 
-describe("Daemon activity markers", () => {
+describe("Pipeline activity markers", () => {
   /** Write one usage-bearing assistant transcript line under projects/. */
   function writeTranscript(configDir: string, timestamp: string): void {
     const proj = join(configDir, "projects", "p");
@@ -351,16 +340,16 @@ describe("Daemon activity markers", () => {
 
   it("marks an unexplained local rise as the recently-active user's usage", async () => {
     const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
-    const daemon = new Daemon(h.deps);
-    await daemon.tick(); // baselines the reader + records 40%
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.tick(); // baselines the reader + records 40%
 
     // a message lands on this machine (recent local Code activity)
     writeTranscript(h.configDir, new Date(NOW).toISOString());
-    await daemon.tick(); // ingests it; tank still 40% -> no marker
+    await pipeline.tick(); // ingests it; tank still 40% -> no marker
 
     // the tank now rises with no new transcript activity to explain it
     h.setBody({ five_hour: { utilization: 55, resets_at: null } });
-    await daemon.tick(); // +15 rise, no in-interval message -> activity marker
+    await pipeline.tick(); // +15 rise, no in-interval message -> activity marker
 
     const markers = await h.storage.getUsageMarkersSince(new Date(NOW - 3_600_000).toISOString());
     expect(markers).toHaveLength(1);
@@ -370,22 +359,114 @@ describe("Daemon activity markers", () => {
 
   it("leaves a rise as unknown when the machine has had no recent activity", async () => {
     const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
-    const daemon = new Daemon(h.deps);
-    await daemon.tick(); // baseline, 40%
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.tick(); // baseline, 40%
     h.setBody({ five_hour: { utilization: 55, resets_at: null } });
-    await daemon.tick(); // rise, but this machine never produced activity -> no marker
+    await pipeline.tick(); // rise, but this machine never produced activity -> no marker
     expect(await h.storage.getUsageMarkersSince(new Date(0).toISOString())).toHaveLength(0);
   });
 
   it("does not mark when a message already covers the rise", async () => {
     const h = await setup({ five_hour: { utilization: 40, resets_at: null } });
-    const daemon = new Daemon(h.deps);
-    await daemon.tick(); // baseline
+    const pipeline = new Pipeline(h.deps);
+    await pipeline.tick(); // baseline
     // activity and the rise land in the same tick -> the message covers it
     writeTranscript(h.configDir, new Date(NOW).toISOString());
     h.setBody({ five_hour: { utilization: 55, resets_at: null } });
-    await daemon.tick();
+    await pipeline.tick();
     expect(await h.storage.getUsageMarkersSince(new Date(0).toISOString())).toHaveLength(0);
+  });
+});
+
+// The manager follows the live Claude account: one machine can be logged into
+// ccpool under several accounts at once, but only the live one is observed.
+describe("Daemon (multi-account manager)", () => {
+  /** Point the observed config dir at a Claude account (or none). */
+  function setLiveAccount(configDir: string, accountUuid: string | null): void {
+    writeFileSync(
+      join(configDir, ".claude.json"),
+      JSON.stringify(accountUuid ? { oauthAccount: { accountUuid } } : { userID: 42 })
+    );
+  }
+
+  interface RecordingSink extends IngestSink {
+    ingests: number;
+    closed: boolean;
+  }
+  function recordingSink(): RecordingSink {
+    const s: RecordingSink = {
+      ingests: 0,
+      closed: false,
+      bootstrap: async () => ({ accountId: null, samples: [] }),
+      ingest: async () => {
+        s.ingests++;
+      },
+      close: async () => {
+        s.closed = true;
+      },
+    };
+    return s;
+  }
+
+  it("surrenders at the top of the tick without polling, ingesting, or writing state", async () => {
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
+    const before = h.fetchCalls();
+    const daemon = new Daemon({
+      configDir: h.configDir,
+      loadProfile: async () => null,
+      pidFile: join(h.configDir, "daemon.pid"),
+      pollIntervalMs: 60_000,
+      ensureOwner: () => false,
+      now: h.deps.now,
+      fetchImpl: h.deps.fetchImpl,
+      readCredentials: h.deps.readCredentials,
+      logger: SILENT,
+    });
+    const res = await daemon.tick();
+
+    expect(res.pollFailed).toBe(false);
+    expect(h.fetchCalls()).toBe(before); // never polled
+    expect(daemon.activeAccountId()).toBeNull();
+  });
+
+  it("follows the live account, flush-evicts on switch, and goes dormant without a profile", async () => {
+    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
+    const sinks: Record<string, RecordingSink> = {};
+    const profiles: Record<string, boolean> = { "acc-1": true, "acc-2": true };
+
+    const daemon = new Daemon({
+      configDir: h.configDir,
+      loadProfile: async (id) => {
+        if (!profiles[id]) return null;
+        const sink = (sinks[id] ??= recordingSink());
+        return { accountId: id, sink, stateFile: join(h.configDir, `state-${id}.json`), name: id };
+      },
+      pidFile: join(h.configDir, "daemon.pid"),
+      pollIntervalMs: 60_000,
+      now: h.deps.now,
+      fetchImpl: h.deps.fetchImpl,
+      readCredentials: h.deps.readCredentials,
+      logger: SILENT,
+    });
+
+    // Live account is acc-1 (from setup's .claude.json) -> observed.
+    await daemon.tick();
+    expect(daemon.activeAccountId()).toBe("acc-1");
+    expect(sinks["acc-1"]!.ingests).toBeGreaterThan(0);
+
+    // Switch Claude to an account with no ccpool profile -> dormant, acc-1 evicted.
+    setLiveAccount(h.configDir, "acc-3");
+    h.advance(60_000);
+    await daemon.tick();
+    expect(daemon.activeAccountId()).toBeNull();
+    expect(sinks["acc-1"]!.closed).toBe(true);
+
+    // Switch to acc-2 (has a profile) -> now observed, its own sink.
+    setLiveAccount(h.configDir, "acc-2");
+    h.advance(60_000);
+    await daemon.tick();
+    expect(daemon.activeAccountId()).toBe("acc-2");
+    expect(sinks["acc-2"]!.ingests).toBeGreaterThan(0);
   });
 });
 
@@ -461,18 +542,5 @@ describe("continuous single-instance ownership (reassertLock)", () => {
     writeFileSync(pidFile, "1");
     expect(reassertLock(pidFile)).toBe(false); // we are the duplicate → surrender
     expect(readFileSync(pidFile, "utf8").trim()).toBe("1"); // peer's lock left intact
-  });
-});
-
-describe("a duplicate daemon does no work and stops itself", () => {
-  it("surrenders at the top of the tick without polling, ingesting, or writing state", async () => {
-    const h = await setup({ five_hour: { utilization: 42, resets_at: null } });
-    const before = h.fetchCalls();
-    const daemon = new Daemon({ ...h.deps, ensureOwner: () => false });
-    const res = await daemon.tick();
-
-    expect(res.pollFailed).toBe(false);
-    expect(h.fetchCalls()).toBe(before); // never polled
-    expect(existsSync(h.stateFile)).toBe(false); // never wrote state.json
   });
 });

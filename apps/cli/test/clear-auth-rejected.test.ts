@@ -4,23 +4,18 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import type { Config, LocalState } from "@ccpool/core";
-import { daemonPaths } from "@ccpool/daemon";
-import { ccpoolDir } from "../src/lib/config.js";
+import { stateFilePath } from "../src/lib/config.js";
 import { clearAuthRejected } from "../src/commands/daemon.js";
 
 let dir: string;
 let cfg: Config;
 
-function stateFileFor(configDir: string): string {
-  return daemonPaths(ccpoolDir(), configDir).stateFile;
-}
-
-function writeState(configDir: string, authRejected: boolean): string {
-  const stateFile = stateFileFor(configDir);
+function writeState(accountId: string, authRejected: boolean): string {
+  const stateFile = stateFilePath(accountId);
   const state: LocalState = {
     updatedAt: "2026-07-05T00:00:00.000Z",
     lastSyncAt: null,
-    account: { id: "acc-1", tokenExpired: false, conflict: false, authRejected },
+    account: { id: accountId, tokenExpired: false, conflict: false, authRejected },
     samples: [],
     daemon: { pid: 1, startedAt: "2026-07-05T00:00:00.000Z" },
   };
@@ -39,8 +34,9 @@ beforeEach(() => {
   cfg = {
     server: { url: "https://api.example.test", token: "tok" },
     name: "sam",
+    accountId: "acc-1",
     pollIntervalMs: 60_000,
-    configDirs: [join(dir, "cfg-a"), join(dir, "cfg-b")],
+    configDirs: [join(dir, "cfg")],
     logLevel: "info",
   };
 });
@@ -51,24 +47,25 @@ afterEach(() => {
 
 describe("clearAuthRejected", () => {
   it("clears a latched authRejected so a re-init doesn't bounce back to logout", () => {
-    const file = writeState(cfg.configDirs[0]!, true);
+    const file = writeState(cfg.accountId!, true);
     clearAuthRejected(cfg);
     expect(readAuthRejected(file)).toBe(false);
   });
 
-  it("clears the latch across every observed config dir", () => {
-    const a = writeState(cfg.configDirs[0]!, true);
-    const b = writeState(cfg.configDirs[1]!, true);
+  it("only touches the profile's own account, leaving other accounts' state alone", () => {
+    const mine = writeState(cfg.accountId!, true);
+    const other = writeState("acc-2", true);
     clearAuthRejected(cfg);
-    expect(readAuthRejected(a)).toBe(false);
-    expect(readAuthRejected(b)).toBe(false);
+    expect(readAuthRejected(mine)).toBe(false);
+    expect(readAuthRejected(other)).toBe(true); // a different account is untouched
   });
 
   it("leaves a clean state.json untouched and tolerates a missing one", () => {
-    const file = writeState(cfg.configDirs[0]!, false);
+    const file = writeState(cfg.accountId!, false);
     const before = readFileSync(file, "utf8");
-    expect(() => clearAuthRejected(cfg)).not.toThrow(); // cfg-b has no state.json
+    expect(() => clearAuthRejected({ ...cfg, accountId: "acc-missing" })).not.toThrow();
+    clearAuthRejected(cfg);
     expect(readFileSync(file, "utf8")).toBe(before);
-    expect(existsSync(stateFileFor(cfg.configDirs[1]!))).toBe(false);
+    expect(existsSync(stateFilePath("acc-missing"))).toBe(false);
   });
 });

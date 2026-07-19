@@ -85,9 +85,25 @@ Every machine reaches the shared ledger the **same way**: over HTTP through the
 ccpool server at a hardcoded URL (`apps/cli/src/lib/links.ts#DEFAULT_SERVER_URL`,
 `CCPOOL_SERVER_URL` overrides). Auth is two passwords — a shared **group password**
 (proves membership) and a per-name **member password** (prevents impersonation) —
-traded at init for a bearer token in the 0600 `~/.ccpool/token` file. The server
+traded at init for a bearer token in a 0600 `token` file. The server
 stamps every ingested row with the _authenticated_ member's name; **the CLI never
 touches a database** (there is no selfhost mode, no `config.mode`).
+
+### One machine, many accounts (profiles keyed by Claude account)
+
+A machine can be logged into ccpool under **several Claude accounts at once** — a
+personal Pro plus a shared/pooled Pro, say. Each account gets its own **profile**
+under `~/.ccpool/accounts/<accountUuid>/{config.json, token, state.json}`
+(`apps/cli/src/lib/config.ts`); the _live_ Claude account (whatever
+`resolveAccount(resolveConfigDir())` reports) selects which profile is active.
+`loadConfig()`/`saveConfig()` are **active-account-aware** — they resolve the live
+account and read/write its profile — so a surface reading `loadConfig()` that
+returns `null` (the live account has no profile) behaves exactly as uninitialized
+and routes to `init`. A pre-multi-account `~/.ccpool/{config.json,token}` migrates
+into the live account's profile dir on first `loadConfig()` (filed under whoever is
+live now — the upgraded-right-after-a-switch edge is accepted). `config.accountId`
+records the owning account. Switching Claude accounts leaves the inactive profile
+untouched, waiting for a switch back.
 
 The client composes the core boundary (`packages/core/src/backend/`): the daemon
 writes through an `IngestSink` (one batched call per tick), views read through a
@@ -103,12 +119,20 @@ group-scoped `Storage`.
 
 There is **no IPC**. The contract is files + the server API:
 
-1. `apps/cli daemon run` → `packages/daemon` runs a tick loop. Each tick: poll the
-   global tank → detect resets → ingest new transcript activity → write an atomic
-   local `state.json` → send everything as **one** `IngestSink.ingest(batch)` (one
-   `POST /v1/ingest`, which the server persists as one DB transaction). A failed
-   batch is retained and merged into the next tick (idempotent uuids make the
-   re-send safe).
+1. `apps/cli daemon run` → `packages/daemon` runs **one machine-wide** manager
+   (`Daemon`) that **follows the live Claude account**. Claude Code only ever has one
+   hydrated `oauthAccount` live at a time, so each tick the manager re-resolves who's
+   live and routes the tick to that account's `Pipeline` — lazily building it and
+   **flush-then-evicting** the previous one on a switch (only the active pipeline ever
+   polls or writes, so an inactive account's `state.json` just waits). A live account
+   with no profile → dormant (no poll, no write). A rebuilt pipeline **re-baselines the
+   JSONL reader at EOF** (never resumes old offsets — transcripts are shared across
+   accounts, so resuming would mis-attribute another account's work). One `Pipeline`
+   tick: poll the tank → detect resets → ingest new transcript activity → write an
+   atomic `state.json` → send everything as **one** `IngestSink.ingest(batch)` (one
+   `POST /v1/ingest`, persisted as one DB transaction). A failed batch is retained and
+   merged into the next tick (idempotent uuids make the re-send safe). The single-
+   instance lock and pidfile are machine-wide (`~/.ccpool/daemon.pid`).
 2. `status`/`tui` build a view via `gatherView(cfg, viewSource)`: prefer the server
    backend (everyone-included), fall back to `state.json`, then a one-shot live
    poll. `statusline` reads `state.json` only.
@@ -281,11 +305,14 @@ Two server-side subsystems sit on the storage-backed backend pieces
 - **One ledger, one account.** `ccpool_meta.accountId` binds a group's ledger to a
   Claude `accountUuid` (the UUID, never the email). The server binds a group at
   creation (`POST /v1/groups` requires a hydrated account) and enforces it on ingest
-  (409 `account-conflict` on `/v1/ingest`, nothing written); a running daemon halts
-  all ledger writes on a mismatch and flags `state.json`'s `account.conflict`. The
-  `accountId` column stays nullable so the one-way `null → accountUuid` claim
-  (`bindAccount`) remains available.
-- **Secrets stay out of config.json.** The 0600 `~/.ccpool/token` file holds the
+  (409 `account-conflict` on `/v1/ingest`, nothing written). Because each machine now
+  keeps a **profile per Claude account** and only observes the live one, a per-account
+  profile's group is always bound to its own account — so the daemon no longer does a
+  proactive local-vs-binding conflict check; the `Pipeline` stays defensive against a
+  stray server 409 (flags `state.json`'s `account.conflict`, drops the batch, records
+  nothing). The `accountId` column stays nullable so the one-way `null → accountUuid`
+  claim (`bindAccount`) remains available.
+- **Secrets stay out of config.json.** The 0600 per-account `token` file holds the
   server bearer; the server stores only sha256 hashes of bearers and self-describing
   scrypt hashes of passwords. The CLI refuses plain-http server URLs except
   localhost. Bearers are retained, not immortal: the server sweeps tokens untouched

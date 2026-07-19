@@ -30,7 +30,7 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   // token file, drop it from the in-memory config (→ unconfigured), and send the
   // user to the re-init wizard to re-authenticate (the "server" section).
   const handleLoggedOut = useCallback(() => {
-    if (config) stopDaemonProcess(config);
+    if (config) stopDaemonProcess();
     void logout();
     setConfig((c) => (c?.server ? { ...c, server: { url: c.server.url } } : c));
     setScreen("init");
@@ -52,9 +52,9 @@ export function Root({ initialConfig }: { initialConfig: Config | null }): React
   useEffect(() => {
     if (!configured || screen !== "status") return;
     const tryUp = (): void => {
-      if (!isDaemonRunning(config)) {
+      if (!isDaemonRunning()) {
         try {
-          spawnDaemon(config);
+          spawnDaemon();
         } catch {
           // best effort — the header keeps showing "down" and we retry
         }

@@ -10,8 +10,7 @@ import {
   type SharedView,
   type ViewSource,
 } from "@ccpool/core";
-import { daemonPaths } from "@ccpool/daemon";
-import { ccpoolDir } from "../src/lib/config.js";
+import { stateFilePath } from "../src/lib/config.js";
 import { gatherView } from "../src/lib/view.js";
 
 /** A ViewSource whose fetch always rejects with the given error. */
@@ -31,7 +30,7 @@ const emptySource: ViewSource = {
 
 /** Write a state.json for the config's observed dir so the reader picks it up. */
 function writeState(partial: Partial<LocalState>): void {
-  const { stateFile } = daemonPaths(ccpoolDir(), cfg.configDirs[0]!);
+  const stateFile = stateFilePath(cfg.accountId!);
   const state: LocalState = {
     updatedAt: "2026-06-29T20:05:00.000Z",
     lastSyncAt: null,
@@ -53,6 +52,7 @@ beforeEach(() => {
   cfg = {
     server: { url: "https://api.example.test", token: "tok" },
     name: "sam",
+    accountId: "acc-1",
     pollIntervalMs: 60_000,
     configDirs: [join(dir, "cfg")], // empty → no state.json, no creds
     logLevel: "info",

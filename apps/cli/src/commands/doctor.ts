@@ -36,7 +36,7 @@ export async function runDoctor(): Promise<void> {
     console.log("ccpool:      not initialized — run `ccpool init`");
     return;
   }
-  console.log(`ccpool cfg:  ${configPath()}`);
+  if (cfg.accountId) console.log(`ccpool cfg:  ${configPath(cfg.accountId)}`);
   console.log(`name:         ${cfg.name}`);
 
   const serverUrl = resolveServerUrl(cfg);

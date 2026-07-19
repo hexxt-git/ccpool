@@ -148,7 +148,7 @@ export function InitScreen({
     // Stop an existing daemon if re-initializing.
     if (initialConfig) {
       try {
-        stopDaemonProcess(initialConfig);
+        stopDaemonProcess();
       } catch {
         // ignore errors stopping existing daemon
       }
@@ -169,7 +169,7 @@ export function InitScreen({
     // We just minted a fresh token, so any prior `authRejected` latch (the "server" section) is stale.
     // Clear it before the status screen reads it, or gatherView loops us back here.
     clearAuthRejected(res.config);
-    spawnDaemon(res.config);
+    spawnDaemon();
     onDone(res.config);
   };
 

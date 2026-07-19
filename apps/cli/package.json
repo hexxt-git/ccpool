@@ -1,7 +1,7 @@
 {
   "name": "ccpool",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Fairly share one Claude Code subscription across a group — a live, shared view of the account's usage and who's driving it.",
   "keywords": [
     "claude",

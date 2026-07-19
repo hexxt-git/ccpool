@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve, type ServerType } from "@hono/node-server";
 import { CcpoolClient, HttpIngestSink, HttpViewSource } from "@ccpool/core";
-import { Daemon } from "@ccpool/daemon";
+import { Pipeline } from "@ccpool/daemon";
 import { makeApp } from "../src/app.js";
 import type { ServerDeps } from "../src/deps.js";
 import { makeTestDeps } from "./helpers.js";
@@ -93,18 +93,13 @@ describe("client to server end to end", () => {
 
     const configDir = fixtureConfigDir();
     process.env.CLAUDE_CONFIG_DIR = configDir;
-    const paths = {
-      pidFile: join(configDir, "d.pid"),
-      stateFile: join(configDir, "state.json"),
-      logFile: join(configDir, "d.log"),
-    };
     const pollBody = { five_hour: { utilization: 42, resets_at: null } };
-    const daemon = new Daemon({
+    const pipeline = new Pipeline({
+      accountId: ACCOUNT,
       sink: new HttpIngestSink(baseUrl, auth.token),
-      paths,
+      stateFile: join(configDir, "state.json"),
       configDir,
       name: "sam",
-      pollIntervalMs: 60_000,
       now: () => NOW,
       fetchImpl: vi.fn(
         async () => new Response(JSON.stringify(pollBody), { status: 200 })
@@ -112,9 +107,9 @@ describe("client to server end to end", () => {
       logger: { debug() {}, info() {}, warn() {}, error() {} },
     });
 
-    await daemon.tick(); // baselines the reader, ships the first samples
+    await pipeline.tick(); // baselines the reader, ships the first samples
     writeTranscript(configDir);
-    await daemon.tick(); // ships the transcript message
+    await pipeline.tick(); // ships the transcript message
 
     const source = new HttpViewSource(baseUrl, auth.token);
     const view = await source.fetchView();

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { rmSync } from "node:fs";
 import {
   AlreadyRunningError,
   daemonPaths,
@@ -7,15 +8,41 @@ import {
   readPid,
   spawnDetached,
   startDaemon,
-  type DaemonPaths,
+  type AccountProfile,
 } from "@ccpool/daemon";
-import type { Config, LocalState } from "@ccpool/core";
-import { ccpoolDir } from "../lib/config.js";
+import { resolveConfigDir, type Config, type LocalState } from "@ccpool/core";
+import {
+  DEFAULT_POLL_INTERVAL_MS,
+  activeAccountId,
+  ccpoolDir,
+  daemonControlPaths,
+  loadConfig,
+  loadProfile,
+  stateFilePath,
+} from "../lib/config.js";
 import { makeIngestSink } from "../lib/backend.js";
-import { loadConfig } from "../lib/config.js";
 
-function pathsFor(cfgConfigDir: string) {
-  return daemonPaths(ccpoolDir(), cfgConfigDir);
+/**
+ * Best-effort: stop a pre-multi-account daemon still running under the legacy
+ * per-config-dir pidfile (`daemon-<hash>.pid`). The new machine-wide daemon uses
+ * a different pidfile, so without this an upgrade would orphan the old observer
+ * (harmless — idempotent ingest, same account — but a wasteful second process).
+ */
+function sweepLegacyDaemon(): void {
+  try {
+    const { pidFile } = daemonPaths(ccpoolDir(), resolveConfigDir());
+    const pid = readPid(pidFile);
+    if (pid !== null && pid !== process.pid && isAlive(pid)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // already gone
+      }
+    }
+    rmSync(pidFile, { force: true });
+  } catch {
+    // no legacy daemon — nothing to sweep
+  }
 }
 
 /**
@@ -34,34 +61,26 @@ function cliEntryPath(): string {
     : fileURLToPath(import.meta.url);
 }
 
-// quiet, config-taking cores (used by the TUI, which cannot print to stdout)
-
-/** Daemon file locations for a config. */
-export function daemonPathsFor(cfg: Config): DaemonPaths {
-  return pathsFor(cfg.configDirs[0] ?? process.cwd());
-}
-
-/** Whether a live daemon owns the pidfile for this config. */
-export function isDaemonRunning(cfg: Config): boolean {
-  const pid = readPid(daemonPathsFor(cfg).pidFile);
+/** Whether the single machine-wide daemon is live. */
+export function isDaemonRunning(): boolean {
+  const pid = readPid(daemonControlPaths().pidFile);
   return pid !== null && isAlive(pid);
 }
 
-/** Spawn the detached observer. No console output. */
-export function spawnDaemon(cfg: Config): { pid: number } | { already: number } {
-  const paths = daemonPathsFor(cfg);
-  const existing = readPid(paths.pidFile);
+/** Spawn the detached observer. No console output. Idempotent (one per machine). */
+export function spawnDaemon(): { pid: number } | { already: number } {
+  const { pidFile, logFile } = daemonControlPaths();
+  const existing = readPid(pidFile);
   if (existing !== null && isAlive(existing)) return { already: existing };
+  sweepLegacyDaemon();
   const cliEntry = cliEntryPath();
   const args = [...process.execArgv, cliEntry, "daemon", "run"];
-  const pid = spawnDetached(process.execPath, args, {
-    logFile: paths.logFile,
-  });
+  const pid = spawnDetached(process.execPath, args, { logFile });
   return { pid };
 }
 
 /**
- * Clear the `authRejected` latch in each config dir's `state.json`.
+ * Clear the `authRejected` latch in a profile's `state.json`.
  *
  * The daemon latches `authRejected` when the server rejects its bearer (the "server" section); it
  * lives in `state.json` until the daemon's next clean write. On a fresh re-init that
@@ -72,24 +91,22 @@ export function spawnDaemon(cfg: Config): { pid: number } | { already: number } 
  * daemon's first tick then owns `state.json` as usual.
  */
 export function clearAuthRejected(cfg: Config): void {
-  const dirs = cfg.configDirs.length ? cfg.configDirs : [process.cwd()];
-  for (const dir of dirs) {
-    const { stateFile } = pathsFor(dir);
-    if (!existsSync(stateFile)) continue;
-    try {
-      const state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
-      if (!state.account?.authRejected) continue;
-      state.account.authRejected = false;
-      writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n", "utf8");
-    } catch {
-      // best effort — the fresh daemon's next write will clear it anyway
-    }
+  if (!cfg.accountId) return;
+  const stateFile = stateFilePath(cfg.accountId);
+  if (!existsSync(stateFile)) return;
+  try {
+    const state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
+    if (!state.account?.authRejected) return;
+    state.account.authRejected = false;
+    writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n", "utf8");
+  } catch {
+    // best effort — the fresh daemon's next write will clear it anyway
   }
 }
 
 /** SIGTERM the running observer. No console output. */
-export function stopDaemonProcess(cfg: Config): "stopped" | "not-running" | "error" {
-  const { pidFile } = daemonPathsFor(cfg);
+export function stopDaemonProcess(): "stopped" | "not-running" | "error" {
+  const { pidFile } = daemonControlPaths();
   const pid = readPid(pidFile);
   if (pid === null || !isAlive(pid)) return "not-running";
   try {
@@ -101,8 +118,8 @@ export function stopDaemonProcess(cfg: Config): "stopped" | "not-running" | "err
 }
 
 /** Last `n` non-empty lines of the daemon log (newest last), or [] if none yet. */
-export function tailDaemonLog(cfg: Config, n = 8): string[] {
-  const { logFile } = daemonPathsFor(cfg);
+export function tailDaemonLog(n = 8): string[] {
+  const { logFile } = daemonControlPaths();
   try {
     return readFileSync(logFile, "utf8").split("\n").filter(Boolean).slice(-n);
   } catch {
@@ -110,33 +127,41 @@ export function tailDaemonLog(cfg: Config, n = 8): string[] {
   }
 }
 
+/**
+ * Compose the runtime for one account, or null when it has no ccpool profile
+ * (the live account isn't pooled — the daemon then goes dormant for it). The
+ * name is re-read each tick so a `config set name` hand-off applies live.
+ */
+async function profileFor(accountId: string): Promise<AccountProfile | null> {
+  const cfg = await loadProfile(accountId);
+  if (!cfg) return null;
+  return {
+    accountId,
+    sink: makeIngestSink(cfg),
+    stateFile: stateFilePath(accountId),
+    name: cfg.name,
+    resolveName: async () => (await loadProfile(accountId))?.name ?? cfg.name,
+  };
+}
+
 /** Foreground loop — what the detached process runs. Blocks until signalled. */
 export async function runDaemonForeground(): Promise<void> {
-  const cfg = await loadConfig();
-  if (!cfg) {
-    console.error("Not initialized. Run `ccpool init` first.");
-    process.exitCode = 1;
-    return;
-  }
-  const configDir = cfg.configDirs[0] ?? process.cwd();
+  // Manager-level knobs come from whichever profile is active now (they're the
+  // same across profiles); defaults keep the daemon running even while dormant.
+  const active = await loadConfig();
+  const { pidFile } = daemonControlPaths();
 
   try {
     await startDaemon({
-      // Uninitialized/unreachable backends surface through the sink's bootstrap
-      // (logged, retried) rather than blocking here — same failure path as ticks.
-      sink: makeIngestSink(cfg),
-      paths: pathsFor(configDir),
-      configDir,
-      name: cfg.name,
-      pollIntervalMs: cfg.pollIntervalMs,
-      logLevel: cfg.logLevel,
-      // re-read the name each tick so `config set name` hand-offs apply live
-      resolveName: async () => (await loadConfig())?.name ?? cfg.name,
+      configDir: resolveConfigDir(),
+      loadProfile: profileFor,
+      pidFile,
+      pollIntervalMs: active?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+      logLevel: active?.logLevel,
     });
   } catch (err) {
-    // Another daemon already owns the single-instance lock. This is the expected,
-    // healthy outcome for a redundant spawn (the TUI re-spawns on a timer, and
-    // several may fire before one wins the lock) — exit 0 quietly, don't crash.
+    // Another daemon already owns the single-instance lock. Expected for a
+    // redundant spawn (the TUI re-spawns on a timer) — exit 0 quietly.
     if (err instanceof AlreadyRunningError) {
       console.log(err.message);
       return;
@@ -147,38 +172,21 @@ export async function runDaemonForeground(): Promise<void> {
 
 /** Spawn the foreground loop detached and return. */
 export async function runDaemonStart(): Promise<void> {
-  const cfg = await loadConfig();
-  if (!cfg) {
-    console.error("Not initialized. Run `ccpool init` first.");
-    process.exitCode = 1;
-    return;
-  }
-  const configDir = cfg.configDirs[0] ?? process.cwd();
-  const paths = pathsFor(configDir);
-
-  const existing = readPid(paths.pidFile);
+  const { pidFile, logFile } = daemonControlPaths();
+  const existing = readPid(pidFile);
   if (existing !== null && isAlive(existing)) {
     console.log(`Daemon already running (pid ${existing}).`);
     return;
   }
-
+  sweepLegacyDaemon();
   const cliEntry = cliEntryPath();
   const args = [...process.execArgv, cliEntry, "daemon", "run"];
-  const pid = spawnDetached(process.execPath, args, {
-    logFile: paths.logFile,
-  });
-  console.log(`Daemon started (pid ${pid}). Logs: ${paths.logFile}`);
+  const pid = spawnDetached(process.execPath, args, { logFile });
+  console.log(`Daemon started (pid ${pid}). Logs: ${logFile}`);
 }
 
 export async function runDaemonStop(): Promise<void> {
-  const cfg = await loadConfig();
-  if (!cfg) {
-    console.error("Not initialized. Run `ccpool init` first.");
-    process.exitCode = 1;
-    return;
-  }
-  const configDir = cfg.configDirs[0] ?? process.cwd();
-  const { pidFile } = pathsFor(configDir);
+  const { pidFile } = daemonControlPaths();
   const pid = readPid(pidFile);
   if (pid === null || !isAlive(pid)) {
     console.log("Daemon is not running.");
@@ -194,14 +202,7 @@ export async function runDaemonStop(): Promise<void> {
 }
 
 export async function runDaemonStatus(): Promise<void> {
-  const cfg = await loadConfig();
-  if (!cfg) {
-    console.error("Not initialized. Run `ccpool init` first.");
-    process.exitCode = 1;
-    return;
-  }
-  const configDir = cfg.configDirs[0] ?? process.cwd();
-  const { pidFile, stateFile } = pathsFor(configDir);
+  const { pidFile } = daemonControlPaths();
   const pid = readPid(pidFile);
 
   if (pid !== null && isAlive(pid)) {
@@ -210,28 +211,36 @@ export async function runDaemonStatus(): Promise<void> {
     console.log("Daemon not running. Start it with `ccpool daemon start`.");
   }
 
-  if (existsSync(stateFile)) {
-    try {
-      const state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
-      const age = Math.round((Date.now() - Date.parse(state.updatedAt)) / 1000);
-      console.log(`Last state update: ${age}s ago (${state.samples.length} caps tracked).`);
-      // The clean-sync heartbeat: a failed poll/ingest bumps `updatedAt` but not
-      // this, so a growing gap here is the signal that syncs are silently failing.
-      if (state.lastSyncAt) {
-        const syncAge = Math.round((Date.now() - Date.parse(state.lastSyncAt)) / 1000);
-        console.log(`Last full sync: ${syncAge}s ago.`);
-      } else {
-        console.log("Last full sync: never (no clean poll + ingest yet).");
-      }
-      if (state.account.authRejected) {
-        console.log("Auth rejected by the server — run `ccpool init` to re-authenticate.");
-      }
-      if (state.account.tokenExpired) {
-        console.log("Token expired — waiting for Claude Code to refresh auth.");
-      }
-    } catch {
-      console.log("state.json present but unreadable.");
+  const accountId = await activeAccountId();
+  if (!accountId) {
+    console.log("No live Claude account — nothing to observe.");
+    return;
+  }
+  const stateFile = stateFilePath(accountId);
+  if (!existsSync(stateFile)) {
+    console.log("This Claude account has no ccpool profile — run `ccpool init` to join.");
+    return;
+  }
+  try {
+    const state = JSON.parse(readFileSync(stateFile, "utf8")) as LocalState;
+    const age = Math.round((Date.now() - Date.parse(state.updatedAt)) / 1000);
+    console.log(`Last state update: ${age}s ago (${state.samples.length} caps tracked).`);
+    // The clean-sync heartbeat: a failed poll/ingest bumps `updatedAt` but not
+    // this, so a growing gap here is the signal that syncs are silently failing.
+    if (state.lastSyncAt) {
+      const syncAge = Math.round((Date.now() - Date.parse(state.lastSyncAt)) / 1000);
+      console.log(`Last full sync: ${syncAge}s ago.`);
+    } else {
+      console.log("Last full sync: never (no clean poll + ingest yet).");
     }
+    if (state.account.authRejected) {
+      console.log("Auth rejected by the server — run `ccpool init` to re-authenticate.");
+    }
+    if (state.account.tokenExpired) {
+      console.log("Token expired — waiting for Claude Code to refresh auth.");
+    }
+  } catch {
+    console.log("state.json present but unreadable.");
   }
 }
 
