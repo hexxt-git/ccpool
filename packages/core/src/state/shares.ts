@@ -101,11 +101,11 @@ export function attributeShares(
       .filter((s) => Number.isFinite(s.t))
       .sort((a, b) => a.t - b.t);
     if (capSamples.length === 0) continue;
-    const resetTimes = resets
+    const capResets = resets
       .filter((r) => r.cap === cap)
-      .map((r) => Date.parse(r.at))
-      .filter((t) => Number.isFinite(t) && t <= now);
-    out.push(...attributeCap(cap, capSamples, msgs, mks, now, resetTimes));
+      .map((r) => ({ t: Date.parse(r.at), previousPct: r.previousPct }))
+      .filter((r) => Number.isFinite(r.t) && r.t <= now);
+    out.push(...attributeCap(cap, capSamples, msgs, mks, now, capResets));
   }
   return out;
 }
@@ -120,6 +120,79 @@ interface TimedMsg {
   model: string | null;
   w: number;
 }
+interface TimedReset {
+  t: number;
+  previousPct: number;
+}
+
+/**
+ * A reset event that isn't a genuine cycle boundary must move the trajectory down by
+ * at least this much. Comfortably above sub-percent clock-skew wobble and endpoint
+ * utilization re-computations (a downward correction detection flags as a "reset");
+ * far below a real cycle flush. A real reset at a very low utilization (a barely-used
+ * cap) can fall under this — folding it costs at most this few percent of attribution,
+ * the safe direction to err.
+ */
+const RESET_DROP_MIN_PCT = 2;
+
+/**
+ * Resolve the current cycle's start: the instant of the most recent *genuine* reset.
+ *
+ * Each {@link ResetEvent} is detected per machine by comparing that machine's own
+ * consecutive readings (immune to cross-machine clock skew), so it's trustworthy
+ * evidence that *a* real drop happened — but its timestamp and `previousPct` are not.
+ * A machine that slept / restarted / was offline through a reset witnesses it *late*:
+ * it stamps its own wake time and a stale `previousPct` (whatever the tank was when it
+ * last polled — which may sit far above *or below* the true peak). Anchoring on the
+ * latest recorded timestamp, as a blind `Math.max` would, moves the window past a
+ * whole cycle of real, correctly-attributed usage and dumps it into `unknown`. That is
+ * the false-reset bug.
+ *
+ * We pin the true instant against the one signal neither stale memory nor skew can
+ * distort: the *merged sample trajectory*. Every machine reads the same account-wide
+ * tank, and within a cycle the tank only rises, so a genuine reset appears in the
+ * trajectory as a step DOWN across its instant — the level just before is well above
+ * the level at/after. A *late re-witness* fires in the middle of the post-reset climb,
+ * where the trajectory is flat or RISING across its instant; it shows no step down and
+ * is rejected. The boundary is the latest reset event the trajectory corroborates.
+ *
+ * Why this is robust where comparing `previousPct`s pairwise is not:
+ *   - A late witness that slept through a climb driven by *another* machine has a
+ *     stale-low `previousPct` unrelated to the true peak — pct-proximity can't cluster
+ *     it away, but the trajectory still rises across its wake, so it's rejected.
+ *   - A genuine *second* reset that climbs back to the *same* level as the first has a
+ *     near-identical `previousPct` — pct-proximity would swallow it, but it has its own
+ *     real step-down in the trajectory, so it's kept.
+ *   - A lone machine's late witness with nothing else filling the gap is still honored:
+ *     the trajectory's only evidence is its own high→low, which *is* a step down, so a
+ *     real solo reset is never blinded.
+ *
+ * `before` is the last trajectory sample strictly before the event — report-on-change
+ * keeps the pre-reset peak as the last distinct level however long it stayed flat, so a
+ * quiet peak is still found; `previousPct` is the fallback only when no earlier sample
+ * exists at all. A reset newer than every sample (its post-reset reading hasn't landed
+ * yet) has no `after` and is trusted, so a just-detected reset still opens the window.
+ */
+export function resolveResetBoundary(capSamples: TimedSample[], resetEvents: TimedReset[]): number {
+  let boundary = -Infinity;
+  for (const e of resetEvents) {
+    if (e.t <= boundary) continue; // can't raise the max — skip the trajectory scan
+    let before: number | null = null;
+    let after: number | null = null;
+    for (const s of capSamples) {
+      if (s.t < e.t)
+        before = s.pct; // last sample strictly before the event
+      else {
+        after = s.pct; // first sample at/after the event
+        break;
+      }
+    }
+    const beforeLevel = before ?? e.previousPct; // fall back only with no earlier sample
+    const corroborated = after === null || beforeLevel - after > RESET_DROP_MIN_PCT;
+    if (corroborated) boundary = e.t;
+  }
+  return boundary;
+}
 
 function attributeCap(
   cap: CapKind,
@@ -127,7 +200,7 @@ function attributeCap(
   msgs: TimedMsg[],
   markers: TimedMsg[],
   now: number,
-  resetTimes: number[]
+  resetEvents: TimedReset[]
 ): UserShare[] {
   // Bound to the current window: start at the most recent recorded reset (not a
   // re-detected pct drop — see attributeShares), and no further back than the cap's
@@ -138,7 +211,7 @@ function attributeCap(
   for (let i = 1; i < capSamples.length; i++) {
     if (capSamples[i]!.t < cutoff) start = i; // too old to matter
   }
-  const lastReset = resetTimes.length ? Math.max(...resetTimes) : -Infinity;
+  const lastReset = resolveResetBoundary(capSamples, resetEvents);
   if (lastReset > -Infinity) {
     // drop everything from a previous reset cycle: the window begins at the first
     // sample at/after the reset (or the lone last sample if none caught up yet).
