@@ -1,7 +1,7 @@
 {
   "name": "ccpool-server",
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Multi-tenant HTTP server for ccpool (Hono + libSQL) — the one path to the shared ledger. Self-host it to run your own group.",
   "keywords": [
     "claude",
